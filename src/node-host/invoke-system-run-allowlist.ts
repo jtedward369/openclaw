@@ -161,6 +161,9 @@ export function resolveSystemRunExecArgv(params: {
     params.shellCommand &&
     params.policy.analysisOk &&
     params.policy.allowlistSatisfied &&
+    params.segmentSatisfiedBy.some(
+      (entry) => entry === "allowlist" || entry === "safeBins" || entry === "inlineChain",
+    ) &&
     isPosixShellInlineCommandTransport(params.argv)
   ) {
     if (!params.authorizationPlan) {
@@ -171,7 +174,7 @@ export function resolveSystemRunExecArgv(params: {
       segments: params.segments,
       segmentSatisfiedBy: params.segmentSatisfiedBy,
       platform: process.platform,
-      mode: "enforced",
+      mode: "safe-bins",
     });
     if (!rebuilt.ok || !rebuilt.command) {
       return null;

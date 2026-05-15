@@ -554,6 +554,9 @@ function renderAuthorizationUnit(params: {
     return { ok: false, reason: "segment mapping failed" };
   }
   if (params.mode === "safe-bins" && satisfiedBy !== "safeBins") {
+    if (satisfiedBy === "allowlist") {
+      return renderAllowlistPinnedRawUnit({ unit, segment, platform: params.platform });
+    }
     if (satisfiedBy === "inlineChain") {
       return { ok: false, reason: "inline chain planner render unavailable" };
     }
@@ -569,6 +572,58 @@ function renderAuthorizationUnit(params: {
     return { ok: false, reason: "unsafe windows token in argv" };
   }
   return { ok: true, command: rendered };
+}
+
+function renderAllowlistPinnedRawUnit(params: {
+  unit: CommandAuthorizationUnit;
+  segment: ExecCommandSegment;
+  platform?: string | null;
+}): RenderedAuthorizationTree {
+  if (isWindowsPlatform(params.platform)) {
+    return { ok: true, command: params.unit.raw.trim() };
+  }
+  const rawExecutable = params.unit.executable?.trim();
+  if (!rawExecutable) {
+    return { ok: false, reason: "allowlist executable unavailable" };
+  }
+  const raw = params.unit.raw.trim();
+  const executionRaw = params.segment.resolution?.execution.rawExecutable?.trim();
+  if (executionRaw && executionRaw !== rawExecutable) {
+    return { ok: false, reason: "allowlist wrapper raw executable replacement unavailable" };
+  }
+  const argv = resolvePlannedSegmentArgv(params.segment);
+  const pinnedExecutable = argv?.[0]?.trim();
+  if (!pinnedExecutable) {
+    return { ok: false, reason: "allowlist pinned executable unavailable" };
+  }
+  const rendered = replaceLeadingShellToken(
+    raw,
+    rawExecutable,
+    shellEscapeSingleArg(pinnedExecutable),
+  );
+  if (!rendered) {
+    return { ok: false, reason: "allowlist executable replacement unavailable" };
+  }
+  return { ok: true, command: rendered };
+}
+
+function replaceLeadingShellToken(raw: string, token: string, replacement: string): string | null {
+  const candidates = [
+    token,
+    shellEscapeSingleArg(token),
+    `"${token.replace(/(["\\$`])/g, "\\$1")}"`,
+  ];
+  for (const candidate of candidates) {
+    if (!raw.startsWith(candidate)) {
+      continue;
+    }
+    const next = raw[candidate.length];
+    if (next !== undefined && !/[\s;&|()<>]/u.test(next)) {
+      continue;
+    }
+    return `${replacement}${raw.slice(candidate.length)}`;
+  }
+  return null;
 }
 
 function shellEscapeSingleArg(value: string): string {

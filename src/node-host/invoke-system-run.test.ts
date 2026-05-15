@@ -1685,6 +1685,52 @@ describe("handleSystemRunInvoke mac app exec host routing", () => {
     },
   );
 
+  it.runIf(process.platform !== "win32")(
+    "preserves allowlisted shell payload argument semantics while pinning the executable",
+    async () => {
+      const oldPath = process.env.PATH;
+      process.env.PATH = "/usr/bin:/bin";
+      try {
+        const echoPath = fs.realpathSync(
+          fs.existsSync("/usr/bin/echo") ? "/usr/bin/echo" : "/bin/echo",
+        );
+        await withTempApprovalsHome({
+          approvals: createAllowlistOnMissApprovals({
+            agents: {
+              main: {
+                allowlist: [{ pattern: echoPath }],
+              },
+            },
+          }),
+          run: async () => {
+            const invoke = await runSystemInvoke({
+              preferMacAppExecHost: false,
+              command: ["/bin/sh", "-lc", 'echo "$HOME"'],
+              rawCommand: '/bin/sh -lc "echo \\"$HOME\\""',
+              security: "allowlist",
+              ask: "on-miss",
+              runCommand: vi.fn(async () => createLocalRunResult("shell-wrapper-arg-ok")),
+            });
+
+            const payload = requireFirstRunCommandArgs(invoke.runCommand)[2] ?? "";
+            expect(payload).toContain(echoPath);
+            expect(payload).toContain('"$HOME"');
+            expect(payload).not.toContain("'$HOME'");
+            expectInvokeOk(invoke.sendInvokeResult, {
+              payloadContains: "shell-wrapper-arg-ok",
+            });
+          },
+        });
+      } finally {
+        if (oldPath === undefined) {
+          delete process.env.PATH;
+        } else {
+          process.env.PATH = oldPath;
+        }
+      }
+    },
+  );
+
   it("keeps cmd.exe transport wrappers approval-gated on Windows", async () => {
     const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     try {
