@@ -62,6 +62,22 @@ export const tryReadJsonSync = ((...args: unknown[]) => {
 }) as typeof rawTryReadJsonSync;
 export const readJsonFileSync = tryReadJsonSync;
 
+function describeOptionsKey(params: Record<string, unknown>): string | null {
+  const safeEntries: [string, string | number | boolean | null][] = [];
+  for (const k of Object.keys(params).sort()) {
+    if (k === "rootDir" || k === "relativePath") continue;
+    const v = params[k];
+    if (v === null) {
+      safeEntries.push([k, null]);
+    } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      safeEntries.push([k, v]);
+    } else {
+      return null;
+    }
+  }
+  return JSON.stringify(safeEntries);
+}
+
 export const readRootJsonObjectSync = ((...args: unknown[]) => {
   const params = args[0];
   if (!params || typeof params !== "object" || isJsonReadCacheDisabled()) {
@@ -72,16 +88,17 @@ export const readRootJsonObjectSync = ((...args: unknown[]) => {
   if (typeof rootDir !== "string" || typeof relativePath !== "string") {
     return (rawReadRootJsonObjectSync as (...a: unknown[]) => unknown)(...args);
   }
-  // Cache only the option-free shape. Any extra param (rejectHardlinks,
-  // maxBytes, rootRealPath, future fs-safe options) carries security or
-  // contract semantics that a path-only key cannot represent.
-  for (const k of Object.keys(params)) {
-    if (k !== "rootDir" && k !== "relativePath") {
-      return (rawReadRootJsonObjectSync as (...a: unknown[]) => unknown)(...args);
-    }
+  // Cache key must distinguish security-relevant options (rejectHardlinks,
+  // maxBytes, rootRealPath, boundaryLabel, ...) so a permissive earlier read
+  // cannot serve a strict later read. Non-primitive option values bypass the
+  // cache rather than risk a partial key.
+  const optionsKey = describeOptionsKey(params as Record<string, unknown>);
+  if (optionsKey === null) {
+    return (rawReadRootJsonObjectSync as (...a: unknown[]) => unknown)(...args);
   }
-  const key = path.resolve(rootDir, relativePath);
-  const stat = statOrUndefined(key);
+  const resolvedPath = path.resolve(rootDir, relativePath);
+  const key = `${resolvedPath}|${optionsKey}`;
+  const stat = statOrUndefined(resolvedPath);
   if (!stat) {
     jsonReadCache.delete(key);
     return (rawReadRootJsonObjectSync as (...a: unknown[]) => unknown)(...args);

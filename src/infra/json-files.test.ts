@@ -152,23 +152,34 @@ describe("json file helpers", () => {
     });
   });
 
-  it("readRootJsonObjectSync bypasses cache when safety-relevant options are set", () => {
-    const dir = fsSync.mkdtempSync(path.join(os.tmpdir(), "openclaw-json-root-cache-bypass-"));
+  it("readRootJsonObjectSync keys the cache on safety-relevant options", () => {
+    const dir = fsSync.mkdtempSync(path.join(os.tmpdir(), "openclaw-json-root-cache-options-"));
     try {
       const filePath = path.join(dir, "manifest.json");
       fsSync.writeFileSync(filePath, '{"name":"x"}', "utf8");
       clearJsonReadCache();
 
-      const first = readRootJsonObjectSync({ rootDir: dir, relativePath: "manifest.json" });
-      const cached = readRootJsonObjectSync({ rootDir: dir, relativePath: "manifest.json" });
-      expect(cached).toBe(first);
-
-      const withOption = readRootJsonObjectSync({
+      const strictA = readRootJsonObjectSync({
         rootDir: dir,
         relativePath: "manifest.json",
+        boundaryLabel: "test",
         rejectHardlinks: true,
-      } as Parameters<typeof readRootJsonObjectSync>[0]);
-      expect(withOption).not.toBe(first);
+      });
+      const strictB = readRootJsonObjectSync({
+        rootDir: dir,
+        relativePath: "manifest.json",
+        boundaryLabel: "test",
+        rejectHardlinks: true,
+      });
+      expect(strictB).toBe(strictA);
+
+      const permissive = readRootJsonObjectSync({
+        rootDir: dir,
+        relativePath: "manifest.json",
+        boundaryLabel: "test",
+        rejectHardlinks: false,
+      });
+      expect(permissive).not.toBe(strictA);
     } finally {
       clearJsonReadCache();
       fsSync.rmSync(dir, { recursive: true, force: true });
