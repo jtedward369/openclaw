@@ -1117,6 +1117,55 @@ describe("gateway server chat", () => {
     });
   });
 
+  test("marks a running webchat session failed when dispatch rejects before a reply", async () => {
+    await withMainSessionStore(async () => {
+      await writeSessionStore({
+        entries: {
+          main: {
+            sessionId: "sess-main",
+            updatedAt: 1_000,
+            status: "running",
+            startedAt: 900,
+          },
+        },
+      });
+      dispatchInboundMessageMock.mockRejectedValueOnce(new Error("provider rejected request"));
+
+      const errorPromise = onceMessage(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "error" &&
+          o.payload?.runId === "idem-dispatch-error-1",
+        8_000,
+      );
+      const res = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "run: pwd",
+        idempotencyKey: "idem-dispatch-error-1",
+      });
+      expect(res.ok).toBe(true);
+      await errorPromise;
+
+      const sessionsRes = await rpcReq<{ sessions?: unknown[] }>(ws, "sessions.list", {});
+      expect(sessionsRes.ok).toBe(true);
+      const session = sessionsRes.payload?.sessions?.find(
+        (row): row is Record<string, unknown> =>
+          Boolean(row) &&
+          typeof row === "object" &&
+          (row as { key?: unknown }).key === "agent:main:main",
+      );
+      expectRecordFields(session, {
+        status: "failed",
+        hasActiveRun: false,
+      });
+      expect(typeof session.startedAt).toBe("number");
+      expect(typeof session.endedAt).toBe("number");
+      expect(typeof session.runtimeMs).toBe("number");
+    });
+  });
+
   test("routes block-streamed /btw replies through side-result events", async () => {
     await withMainSessionStore(async (dir) => {
       await fs.writeFile(

@@ -112,6 +112,7 @@ import {
 } from "../protocol/index.js";
 import { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../protocol/schema/primitives.js";
 import { getMaxChatHistoryMessagesBytes } from "../server-constants.js";
+import { persistGatewaySessionLifecycleEvent } from "../session-lifecycle-state.js";
 import { readSessionTranscriptIndex } from "../session-transcript-index.fs.js";
 import {
   capArrayByJsonBytes,
@@ -3130,6 +3131,45 @@ export const chatHandlers: GatewayRequestHandlers = {
             );
           });
           const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));
+          const endedAt = Date.now();
+          const lifecycleStartedAt = activeRunAbort.entry?.startedAtMs ?? now;
+          await persistGatewaySessionLifecycleEvent({
+            sessionKey,
+            event: {
+              ts: endedAt,
+              data: {
+                phase: "error",
+                startedAt: lifecycleStartedAt,
+                endedAt,
+                error: String(err),
+              },
+            },
+          }).catch((persistErr) => {
+            context.logGateway.warn(
+              `webchat session lifecycle persist failed after error: ${formatForLog(persistErr)}`,
+            );
+          });
+          const sessionEventConnIds = context.getSessionEventSubscriberConnIds();
+          if (sessionEventConnIds.size > 0) {
+            context.broadcastToConnIds(
+              "sessions.changed",
+              {
+                sessionKey,
+                phase: "error",
+                runId: clientRunId,
+                ts: endedAt,
+                updatedAt: endedAt,
+                status: "failed",
+                startedAt: lifecycleStartedAt,
+                endedAt,
+                runtimeMs: Math.max(0, endedAt - lifecycleStartedAt),
+                abortedLastRun: false,
+                hasActiveRun: false,
+              },
+              sessionEventConnIds,
+              { dropIfSlow: true },
+            );
+          }
           setGatewayDedupeEntry({
             dedupe: context.dedupe,
             key: `chat:${clientRunId}`,
