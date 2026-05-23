@@ -1144,6 +1144,7 @@ describe("runCodexAppServerAttempt", () => {
       params.disableTools = false;
       params.runtimePlan = createCodexRuntimePlanFixture();
       params.config = createCodexSandboxTestConfig();
+      params.timeoutMs = 60_000;
       const { requests, waitForMethod, completeTurn } = createStartedThreadHarness();
 
       const run = runCodexAppServerAttempt(params, {
@@ -1154,7 +1155,7 @@ describe("runCodexAppServerAttempt", () => {
           },
         },
       });
-      await waitForMethod("turn/start");
+      await waitForMethod("turn/start", 60_000);
       await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
       await run;
 
