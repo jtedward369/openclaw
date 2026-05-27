@@ -84,6 +84,7 @@ import { sanitizeIMessageWatchErrorPayload } from "./watch-error-log.js";
 const WATCH_SUBSCRIBE_MAX_ATTEMPTS = 3;
 const WATCH_SUBSCRIBE_RETRY_DELAY_MS = 1_000;
 const APPROVAL_REACTION_POLL_INTERVAL_MS = 2_000;
+const APPROVAL_REACTION_DISCOVERY_INTERVAL_MS = 60_000;
 
 function isIMessagePluginPayloadAttachment(attachment: {
   original_path?: string | null;
@@ -1055,7 +1056,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       })
     : undefined;
   let approvalReactionPollInFlight = false;
-  const pollApprovalReactions = async () => {
+  const pollApprovalReactions = async (allowRecentChatDiscovery = false) => {
     if (approvalReactionPollInFlight) {
       return;
     }
@@ -1065,6 +1066,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
         client: activeClient,
         cfg,
         accountId: accountInfo.accountId,
+        allowRecentChatDiscovery,
         logVerboseMessage: logVerbose,
       });
     } catch (err) {
@@ -1076,7 +1078,10 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
   const approvalReactionPollTimer = setInterval(() => {
     void pollApprovalReactions();
   }, APPROVAL_REACTION_POLL_INTERVAL_MS);
-  void pollApprovalReactions();
+  const approvalReactionDiscoveryTimer = setInterval(() => {
+    void pollApprovalReactions(true);
+  }, APPROVAL_REACTION_DISCOVERY_INTERVAL_MS);
+  void pollApprovalReactions(true);
 
   // Catchup runs once between watch.subscribe and the live dispatch loop.
   // Anything that arrives during the catchup pass itself flows through
@@ -1126,6 +1131,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
     throw err;
   } finally {
     clearInterval(approvalReactionPollTimer);
+    clearInterval(approvalReactionDiscoveryTimer);
     approvalContextLease?.dispose();
     detachAbortHandler();
     await activeClient.stop();

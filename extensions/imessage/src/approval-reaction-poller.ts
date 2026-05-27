@@ -46,6 +46,14 @@ function listTargetChatIds(
   return [...chatIds];
 }
 
+function hasUnscopedTarget(targets: readonly PendingIMessageApprovalReactionPollTarget[]): boolean {
+  return targets.some((target) => normalizeChatId(target.conversation.chatId) === null);
+}
+
+function uniqueChatIds(chatIds: readonly number[]): number[] {
+  return [...new Set(chatIds)];
+}
+
 function normalizeMessageGuid(value: string): string {
   return value.trim().replace(/^p:\d+\//iu, "");
 }
@@ -203,16 +211,27 @@ export async function pollPendingIMessageApprovalReactions(params: {
   client: IMessageRpcClient;
   cfg: OpenClawConfig;
   accountId: string;
+  allowRecentChatDiscovery?: boolean;
   logVerboseMessage?: (message: string) => void;
 }): Promise<void> {
   const targets = listPendingIMessageApprovalReactionPollTargets({
     accountId: params.accountId,
   });
+  if (targets.length === 0 && params.allowRecentChatDiscovery !== true) {
+    return;
+  }
 
   const pendingByMessageId = buildPendingTargetsByMessageId(targets);
   const explicitChatIds = listTargetChatIds(targets);
-  const chatIds =
-    explicitChatIds.length > 0 ? explicitChatIds : await listRecentChatIds(params.client);
+  const shouldDiscoverRecentChats =
+    params.allowRecentChatDiscovery === true &&
+    (targets.length === 0 || hasUnscopedTarget(targets));
+  const chatIds = shouldDiscoverRecentChats
+    ? uniqueChatIds([...explicitChatIds, ...(await listRecentChatIds(params.client))])
+    : explicitChatIds;
+  if (chatIds.length === 0) {
+    return;
+  }
   for (const chatId of chatIds) {
     let messages: HistoryMessage[];
     try {

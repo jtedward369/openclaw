@@ -4,6 +4,7 @@ import {
   buildIMessageApprovalReactionHint,
   clearIMessageApprovalReactionTargetsForTest,
   extractIMessageApprovalPromptBinding,
+  listPendingIMessageApprovalReactionPollTargets,
   maybeResolveIMessageApprovalReaction,
   registerIMessageApprovalReactionTargetForOutboundMessage,
   registerIMessageApprovalReactionTarget,
@@ -123,6 +124,40 @@ describe("iMessage approval reactions", () => {
       approvalId: "exec-1",
       decision: "deny",
     });
+  });
+
+  it("merges learned chat ids into pending poll targets", () => {
+    registerIMessageApprovalReactionTarget({
+      accountId: "default",
+      conversation: { handle: "+15551230000" },
+      messageId: "p:0/msg-1",
+      approvalId: "exec-1",
+      allowedDecisions: ["allow-once", "deny"],
+    });
+    registerIMessageApprovalReactionTarget({
+      accountId: "default",
+      conversation: {
+        chatGuid: "SMS;-;+15551230000",
+        chatIdentifier: "+15551230000",
+        chatId: 42,
+      },
+      messageId: "msg-1",
+      approvalId: "exec-1",
+      allowedDecisions: ["allow-once", "deny"],
+    });
+
+    expect(listPendingIMessageApprovalReactionPollTargets({ accountId: "default" })).toEqual([
+      expect.objectContaining({
+        approvalId: "exec-1",
+        conversation: {
+          chatGuid: "SMS;-;+15551230000",
+          chatIdentifier: "+15551230000",
+          chatId: 42,
+          handle: "+15551230000",
+        },
+        messageId: "p:0/msg-1",
+      }),
+    ]);
   });
 
   it("resolves a registered group reaction target keyed by chat_guid", async () => {

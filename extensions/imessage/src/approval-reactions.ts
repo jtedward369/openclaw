@@ -114,6 +114,22 @@ function prunePendingReactionPollTargets(nowMs = Date.now()): void {
   }
 }
 
+function normalizePollTargetMessageId(messageId: string): string {
+  return messageId.trim().replace(/^p:\d+\//iu, "");
+}
+
+function mergePollTargetConversation(
+  left: IMessageApprovalConversationKey,
+  right: IMessageApprovalConversationKey,
+): IMessageApprovalConversationKey {
+  return {
+    chatGuid: left.chatGuid ?? right.chatGuid,
+    chatIdentifier: left.chatIdentifier ?? right.chatIdentifier,
+    chatId: left.chatId ?? right.chatId,
+    handle: left.handle ?? right.handle,
+  };
+}
+
 export function listPendingIMessageApprovalReactionPollTargets(params: {
   accountId: string;
 }): PendingIMessageApprovalReactionPollTarget[] {
@@ -122,20 +138,24 @@ export function listPendingIMessageApprovalReactionPollTargets(params: {
     return [];
   }
   prunePendingReactionPollTargets();
-  const seen = new Set<string>();
-  const targets: PendingIMessageApprovalReactionPollTarget[] = [];
+  const targetByApprovalAndMessage = new Map<string, PendingIMessageApprovalReactionPollTarget>();
   for (const target of pendingReactionPollTargets.values()) {
     if (target.accountId !== accountId) {
       continue;
     }
-    const key = `${target.approvalId}:${target.messageId}`;
-    if (seen.has(key)) {
+    const key = `${target.approvalId}:${normalizePollTargetMessageId(target.messageId)}`;
+    const existing = targetByApprovalAndMessage.get(key);
+    if (!existing) {
+      targetByApprovalAndMessage.set(key, target);
       continue;
     }
-    seen.add(key);
-    targets.push(target);
+    targetByApprovalAndMessage.set(key, {
+      ...existing,
+      conversation: mergePollTargetConversation(existing.conversation, target.conversation),
+      expiresAtMs: Math.max(existing.expiresAtMs, target.expiresAtMs),
+    });
   }
-  return targets;
+  return [...targetByApprovalAndMessage.values()];
 }
 
 function reportPersistentApprovalReactionError(error: unknown): void {
@@ -569,5 +589,6 @@ export async function maybeResolveIMessageApprovalReaction(params: {
 
 export function clearIMessageApprovalReactionTargetsForTest(): void {
   imessageApprovalReactionTargets.clearForTest();
+  pendingReactionPollTargets.clear();
   resolverRuntimePromise = undefined;
 }
