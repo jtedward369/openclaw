@@ -153,6 +153,23 @@ function sameServiceUrl(left: string | undefined, right: string): boolean {
   }
 }
 
+function stringifyReferenceFallbackActivity(activity: unknown): string {
+  if (typeof activity === "string") {
+    return activity;
+  }
+  if (activity == null) {
+    return "";
+  }
+  if (
+    typeof activity === "number" ||
+    typeof activity === "boolean" ||
+    typeof activity === "bigint"
+  ) {
+    return String(activity);
+  }
+  return "";
+}
+
 async function getApiClientForReference(
   app: MSTeamsApp,
   ref: MSTeamsSdkConversationReference,
@@ -183,7 +200,7 @@ function mergeReferenceIntoActivity(
   const source =
     activity && typeof activity === "object" && !Array.isArray(activity)
       ? (activity as Record<string, unknown>)
-      : { type: "message", text: String(activity ?? "") };
+      : { type: "message", text: stringifyReferenceFallbackActivity(activity) };
   const existingChannelData =
     source.channelData &&
     typeof source.channelData === "object" &&
@@ -196,12 +213,13 @@ function mergeReferenceIntoActivity(
     !Array.isArray(existingChannelData.tenant)
       ? (existingChannelData.tenant as Record<string, unknown>)
       : undefined;
-  const channelData = ref.tenantId
-    ? {
-        ...(existingChannelData ?? {}),
-        tenant: { ...(existingTenant ?? {}), id: ref.tenantId },
-      }
-    : existingChannelData;
+  let channelData = existingChannelData ? { ...existingChannelData } : undefined;
+  if (ref.tenantId) {
+    channelData ??= {};
+    channelData.tenant = existingTenant
+      ? { ...existingTenant, id: ref.tenantId }
+      : { id: ref.tenantId };
+  }
   return {
     ...source,
     channelId: ref.channelId,

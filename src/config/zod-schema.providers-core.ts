@@ -1508,6 +1508,28 @@ export const MSTeamsTeamSchema = z
   })
   .strict();
 
+const MSTEAMS_SERVICE_URL_HOST_ALLOWLIST = [
+  "smba.trafficmanager.net",
+  "smba.infra.gcc.teams.microsoft.com",
+  "smba.infra.gov.teams.microsoft.us",
+  "smba.infra.dod.teams.microsoft.us",
+] as const;
+
+function isAllowedMSTeamsServiceUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    return MSTEAMS_SERVICE_URL_HOST_ALLOWLIST.some(
+      (allowed) => host === allowed || host.endsWith(`.${allowed}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const MSTeamsConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -1519,7 +1541,14 @@ export const MSTeamsConfigSchema = z
     appPassword: SecretInputSchema.optional().register(sensitive),
     tenantId: z.string().optional(),
     cloud: z.enum(["Public", "USGov", "USGovDoD"]).optional(),
-    serviceUrl: z.string().url().optional(),
+    serviceUrl: z
+      .string()
+      .url()
+      .refine(isAllowedMSTeamsServiceUrl, {
+        message:
+          "channels.msteams.serviceUrl must use a supported Microsoft Teams Bot Connector host",
+      })
+      .optional(),
     authType: z.enum(["secret", "federated"]).optional(),
     certificatePath: z.string().optional(),
     certificateThumbprint: z.string().optional(),

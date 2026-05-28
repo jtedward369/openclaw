@@ -102,7 +102,7 @@ export type MSTeamsConfig = {
   cloud?: MSTeamsCloudName;
   /**
    * Bot Connector service URL used by SDK proactive sends/edits/deletes.
-   * Set with `cloud` for non-public SDK clouds; set alone for GCC or custom endpoints.
+   * Set with `cloud` for non-public SDK clouds; set alone for GCC.
    */
   serviceUrl?: string;
   /**

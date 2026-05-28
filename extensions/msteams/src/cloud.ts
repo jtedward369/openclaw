@@ -94,7 +94,7 @@ export function validateMSTeamsProactiveServiceUrlBoundary(params: {
     throw new Error(
       `msteams proactive send blocked for ${params.conversationId}: stored conversation serviceUrl (${stored.value}) ` +
         "is not a Microsoft Teams public-cloud Bot Connector endpoint. " +
-        "Set channels.msteams.cloud and channels.msteams.serviceUrl for the Teams cloud that owns this conversation, or set channels.msteams.serviceUrl if you need a custom Connector endpoint.",
+        "Set channels.msteams.cloud and channels.msteams.serviceUrl for the supported Teams cloud that owns this conversation.",
     );
   }
 }

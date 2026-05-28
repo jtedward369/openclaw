@@ -15,7 +15,7 @@ export const msTeamsChannelConfigUiHints = {
   },
   serviceUrl: {
     label: "MS Teams Service URL",
-    help: "Bot Connector service URL for SDK proactive sends/edits/deletes. Set with cloud for non-public SDK clouds; set alone for GCC or custom endpoints.",
+    help: "Bot Connector service URL for SDK proactive sends/edits/deletes. Set with cloud for non-public SDK clouds; set alone for GCC.",
   },
   streaming: {
     label: "MS Teams Streaming",

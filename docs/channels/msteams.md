@@ -713,7 +713,7 @@ Example for GCC High:
 }
 ```
 
-`channels.msteams.serviceUrl` can also override the public-cloud default for custom or future endpoints. When a service URL is configured, OpenClaw checks that the stored conversation `serviceUrl` uses the same host before proactive sends, edits, deletes, cards, polls, or queued long-running replies run. With the default public-cloud config, OpenClaw fails closed if a stored conversation points outside the public Teams Connector host. Receive a fresh message from the conversation after changing cloud/service URL settings so the stored conversation reference is current.
+`channels.msteams.serviceUrl` is restricted to supported Microsoft Teams Bot Connector hosts. When a service URL is configured, OpenClaw checks that the stored conversation `serviceUrl` uses the same host before proactive sends, edits, deletes, cards, polls, or queued long-running replies run. With the default public-cloud config, OpenClaw fails closed if a stored conversation points outside the public Teams Connector host. Receive a fresh message from the conversation after changing cloud/service URL settings so the stored conversation reference is current.
 
 China/21Vianet proactive routing is not exposed as a supported `channels.msteams.cloud` preset in this version because OpenClaw does not have a documented China Bot Connector `serviceUrl` host to allowlist. Do not use this SDK migration path for China/21Vianet proactive sends until Microsoft documents the matching Connector endpoint and OpenClaw adds it to the service URL boundary.
 
@@ -732,7 +732,7 @@ Key settings (see `/gateway/configuration` for shared channel patterns):
 - `channels.msteams.enabled`: enable/disable the channel.
 - `channels.msteams.appId`, `channels.msteams.appPassword`, `channels.msteams.tenantId`: bot credentials.
 - `channels.msteams.cloud`: Teams SDK cloud environment (`Public`, `USGov`, or `USGovDoD`; default `Public`). Set this with `serviceUrl` for non-public SDK clouds.
-- `channels.msteams.serviceUrl`: Bot Connector service URL boundary for SDK proactive operations. Public cloud uses the SDK default; set this for GCC (`https://smba.infra.gcc.teams.microsoft.com/teams`), GCC High, DoD, or custom endpoints.
+- `channels.msteams.serviceUrl`: Bot Connector service URL boundary for SDK proactive operations. Public cloud uses the SDK default; set this for GCC (`https://smba.infra.gcc.teams.microsoft.com/teams`), GCC High, or DoD.
 - `channels.msteams.webhook.port` (default `3978`)
 - `channels.msteams.webhook.path` (default `/api/messages`)
 - `channels.msteams.dmPolicy`: `pairing | allowlist | open | disabled` (default: pairing)
