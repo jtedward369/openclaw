@@ -44,4 +44,62 @@ describe("provider contract enablePluginInConfig", () => {
       reason: "blocked by denylist",
     });
   });
+
+  it("enables provider plugins without using hostile config array methods", () => {
+    const allow = Object.assign(["mockplugin"], {
+      includes() {
+        throw new Error("fuzzplugin allow includes failed");
+      },
+      [Symbol.iterator]() {
+        throw new Error("mockplugin allow iterator failed");
+      },
+    });
+    const deny = Object.assign(["blockedplugin"], {
+      includes() {
+        throw new Error("fuzzplugin deny includes failed");
+      },
+      [Symbol.iterator]() {
+        throw new Error("mockplugin deny iterator failed");
+      },
+    });
+
+    const result = enableSearchPluginInConfig(
+      {
+        plugins: {
+          allow,
+          deny,
+        },
+      },
+      "fuzzplugin",
+    );
+
+    expect(result.enabled).toBe(true);
+    expect(result.config.plugins?.allow).toEqual(["mockplugin", "fuzzplugin"]);
+    expect(result.config.plugins?.deny).toEqual(["blockedplugin"]);
+    expect(result.config.plugins?.entries?.fuzzplugin).toEqual({ enabled: true });
+  });
+
+  it("skips unreadable provider plugin entry config during enablement", () => {
+    const entries = {
+      get fuzzplugin() {
+        throw new Error("fuzzplugin entry read failed");
+      },
+      mockplugin: { enabled: false },
+    };
+
+    const result = enableSearchPluginInConfig(
+      {
+        plugins: {
+          entries,
+        },
+      },
+      "fuzzplugin",
+    );
+
+    expect(result.enabled).toBe(true);
+    expect(result.config.plugins?.entries).toEqual({
+      mockplugin: { enabled: false },
+      fuzzplugin: { enabled: true },
+    });
+  });
 });
