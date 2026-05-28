@@ -683,7 +683,7 @@ The most important fields are:
 | `config.thinking`            | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "adaptive" \| "max"`                | Advanced thinking override for the blocking memory sub-agent; default `off` for speed                                                                                                                                                                    |
 | `config.promptOverride`      | `string`                                                                                             | Advanced full prompt replacement; not recommended for normal use                                                                                                                                                                                         |
 | `config.promptAppend`        | `string`                                                                                             | Advanced extra instructions appended to the default or overridden prompt                                                                                                                                                                                 |
-| `config.timeoutMs`           | `number`                                                                                             | Hard timeout for the blocking memory sub-agent, capped at 120000 ms                                                                                                                                                                                      |
+| `config.timeoutMs`           | `number`                                                                                             | Hard timeout for the blocking memory sub-agent, capped at 300000 ms. Higher values can delay the visible reply.                                                                                                                                          |
 | `config.setupGraceTimeoutMs` | `number`                                                                                             | Advanced extra setup budget before the recall timeout expires; defaults to 0 and is capped at 30000 ms. See [Cold-start grace](#cold-start-grace) for v2026.4.x upgrade guidance                                                                         |
 | `config.maxSummaryChars`     | `number`                                                                                             | Maximum total characters allowed in the active-memory summary                                                                                                                                                                                            |
 | `config.logging`             | `boolean`                                                                                            | Emits active memory logs while tuning                                                                                                                                                                                                                    |
@@ -799,6 +799,10 @@ If active memory is too slow:
 - lower `timeoutMs`
 - reduce recent turn counts
 - reduce per-turn char caps
+
+For slow local recall models, you can raise `config.timeoutMs` up to `300000`
+ms. This is an explicit trade-off: Active Memory may wait longer before the
+visible reply starts.
 
 ## Common issues
 

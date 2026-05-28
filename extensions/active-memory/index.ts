@@ -39,6 +39,7 @@ const DEFAULT_CACHE_TTL_MS = 15_000;
 const DEFAULT_MAX_CACHE_ENTRIES = 1000;
 const CACHE_SWEEP_INTERVAL_MS = 1000;
 const DEFAULT_MIN_TIMEOUT_MS = 250;
+const MAX_ACTIVE_MEMORY_TIMEOUT_MS = 300_000;
 const DEFAULT_SETUP_GRACE_TIMEOUT_MS = 0;
 const DEFAULT_QUERY_MODE = "recent" as const;
 const DEFAULT_QMD_SEARCH_MODE = "search" as const;
@@ -894,7 +895,7 @@ function normalizePluginConfig(
       parseOptionalPositiveInt(raw.timeoutMs, DEFAULT_TIMEOUT_MS),
       DEFAULT_TIMEOUT_MS,
       minimumTimeoutMs,
-      120_000,
+      MAX_ACTIVE_MEMORY_TIMEOUT_MS,
     ),
     setupGraceTimeoutMs: clampInt(raw.setupGraceTimeoutMs, setupGraceTimeoutMs, 0, 30_000),
     queryMode:

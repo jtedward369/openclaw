@@ -60,7 +60,7 @@ describe("active-memory manifest config schema", () => {
       value: {
         enabled: true,
         agents: ["main"],
-        timeoutMs: 120_000,
+        timeoutMs: 300_000,
       },
     });
 
@@ -102,7 +102,7 @@ describe("active-memory manifest config schema", () => {
       value: {
         enabled: true,
         agents: ["main"],
-        timeoutMs: 120_001,
+        timeoutMs: 300_001,
       },
     });
 

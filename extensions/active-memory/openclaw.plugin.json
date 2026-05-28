@@ -39,7 +39,7 @@
         "type": "string",
         "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "adaptive"]
       },
-      "timeoutMs": { "type": "integer", "minimum": 250, "maximum": 120000 },
+      "timeoutMs": { "type": "integer", "minimum": 250, "maximum": 300000 },
       "setupGraceTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 30000 },
       "queryMode": {
         "type": "string",
@@ -123,7 +123,8 @@
       "help": "Optional explicit denylist of chat/user IDs. Sessions whose resolved conversation id matches the list are skipped even when the chat type is allowed. Applied after allowedChatIds."
     },
     "timeoutMs": {
-      "label": "Timeout (ms)"
+      "label": "Timeout (ms)",
+      "help": "Hard timeout for the blocking memory sub-agent. Default: 15000. Maximum: 300000. Higher values can delay the visible reply."
     },
     "setupGraceTimeoutMs": {
       "label": "Setup Grace Timeout (ms)",

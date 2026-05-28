@@ -381,11 +381,11 @@ describe("active-memory plugin", () => {
   it("registers before_prompt_build with the configured recall timeout", () => {
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 90_000,
+      timeoutMs: 180_000,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
 
-    expect(hookOptions.before_prompt_build?.timeoutMs).toBe(90_000);
+    expect(hookOptions.before_prompt_build?.timeoutMs).toBe(180_000);
   });
 
   it("registers before_prompt_build with explicit setup grace when configured", () => {
@@ -3231,10 +3231,10 @@ describe("active-memory plugin", () => {
     expectLinesToContain(warnLines, "before_prompt_build");
   });
 
-  it("honors configured timeoutMs values above the former 60 000 ms ceiling", async () => {
+  it("honors configured timeoutMs values above the former 120 000 ms ceiling", async () => {
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 90_000,
+      timeoutMs: 180_000,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
@@ -3250,13 +3250,13 @@ describe("active-memory plugin", () => {
     );
 
     const passedTimeoutMs = lastEmbeddedRunParams().timeoutMs;
-    expect(passedTimeoutMs).toBe(90_000);
+    expect(passedTimeoutMs).toBe(180_000);
   });
 
-  it("clamps timeoutMs above the 120 000 ms ceiling to the ceiling", async () => {
+  it("clamps timeoutMs above the 300 000 ms ceiling to the ceiling", async () => {
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 200_000,
+      timeoutMs: 400_000,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
@@ -3272,7 +3272,7 @@ describe("active-memory plugin", () => {
     );
 
     const passedTimeoutMs = lastEmbeddedRunParams().timeoutMs;
-    expect(passedTimeoutMs).toBe(120_000);
+    expect(passedTimeoutMs).toBe(300_000);
   });
 
   it("sanitizes active-memory log fields onto a single line", async () => {
