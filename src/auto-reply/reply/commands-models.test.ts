@@ -260,6 +260,19 @@ function firstAuthCheckerParams() {
   return modelProviderAuthMocks.createProviderAuthChecker.mock.calls[0]?.[0];
 }
 
+function countAuthCheckerCallsMatching(expected: {
+  agentDir?: string;
+  workspaceDir?: string;
+}): number {
+  return modelProviderAuthMocks.createProviderAuthChecker.mock.calls.filter(([params]) => {
+    const callParams = params as { agentDir?: string; workspaceDir?: string };
+    return (
+      (expected.agentDir === undefined || callParams.agentDir === expected.agentDir) &&
+      (expected.workspaceDir === undefined || callParams.workspaceDir === expected.workspaceDir)
+    );
+  }).length;
+}
+
 describe("handleModelsCommand", () => {
   it("shows a simple providers menu on text surfaces", async () => {
     const result = await handleModelsCommand(buildParams("/models"), true);
@@ -361,6 +374,12 @@ describe("handleModelsCommand", () => {
         workspaceDir: "/tmp/spawned-workspace",
       }),
     );
+    expect(
+      countAuthCheckerCallsMatching({
+        agentDir: "/tmp/worker-agent",
+        workspaceDir: "/tmp/spawned-workspace",
+      }),
+    ).toBe(2);
   });
 
   it("shows plugin-normalized allowlist models in browse data", async () => {
@@ -720,6 +739,11 @@ describe("handleModelsCommand", () => {
     expect(modelProviderAuthMocks.createProviderAuthChecker).toHaveBeenCalledWith(
       expect.objectContaining({ agentDir: "/tmp/worker-agent" }),
     );
+    expect(
+      countAuthCheckerCallsMatching({
+        agentDir: "/tmp/worker-agent",
+      }),
+    ).toBe(2);
   });
 
   it("preserves explicit agentDir and workspaceDir overrides for provider data auth filtering", async () => {
@@ -750,6 +774,12 @@ describe("handleModelsCommand", () => {
         workspaceDir: "/tmp/override-workspace",
       }),
     );
+    expect(
+      countAuthCheckerCallsMatching({
+        agentDir: "/tmp/override-agent",
+        workspaceDir: "/tmp/override-workspace",
+      }),
+    ).toBe(2);
   });
 
   it("keeps the telegram provider picker browse-only", async () => {
