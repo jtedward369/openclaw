@@ -13,7 +13,7 @@ describe("shouldUseDirectLoopbackGatewayAuth", () => {
       async () => {
         await withEnvOverride({ OPENCLAW_GATEWAY_TOKEN: undefined }, async () => {
           expect(
-            shouldUseDirectLoopbackGatewayAuth({
+            await shouldUseDirectLoopbackGatewayAuth({
               url: "ws://127.0.0.1:18789",
               token: "shared-token",
             }),
@@ -33,7 +33,7 @@ describe("shouldUseDirectLoopbackGatewayAuth", () => {
       async () => {
         await withEnvOverride({ OPENCLAW_GATEWAY_TOKEN: undefined }, async () => {
           expect(
-            shouldUseDirectLoopbackGatewayAuth({
+            await shouldUseDirectLoopbackGatewayAuth({
               url: "ws://127.0.0.1:18789",
               token: "operator-device-token",
             }),
@@ -41,5 +41,29 @@ describe("shouldUseDirectLoopbackGatewayAuth", () => {
         });
       },
     );
+  });
+
+  it("recognizes SecretRef-backed configured gateway tokens as shared loopback auth", async () => {
+    await withEnvOverride({ CONFIG_GATEWAY_TOKEN: "resolved-shared-token" }, async () => {
+      expect(
+        await shouldUseDirectLoopbackGatewayAuth({
+          url: "ws://127.0.0.1:18789",
+          token: "resolved-shared-token",
+          config: {
+            gateway: {
+              auth: {
+                mode: "token",
+                token: { source: "env", provider: "default", id: "CONFIG_GATEWAY_TOKEN" },
+              },
+            },
+            secrets: {
+              providers: {
+                default: { source: "env" },
+              },
+            },
+          },
+        }),
+      ).toBe(true);
+    });
   });
 });

@@ -446,19 +446,33 @@ describe("callGateway url resolution", () => {
     expect(lastClientOptions?.deviceIdentity).toBeNull();
   });
 
-  it("keeps device identity available for unproven backend loopback token auth", async () => {
+  it("keeps direct-local backend SecretRef token auth independent of paired device state", async () => {
     setLocalLoopbackGatewayConfig();
+    process.env.LOCAL_REF_TOKEN = "explicit-token";
+    getRuntimeConfig.mockReturnValue({
+      gateway: {
+        mode: "local",
+        bind: "loopback",
+        auth: {
+          mode: "token",
+          token: { source: "env", provider: "default", id: "LOCAL_REF_TOKEN" },
+        },
+      },
+      secrets: {
+        providers: {
+          default: { source: "env" },
+        },
+      },
+    } as never);
 
     await callGateway({
       method: "health",
-      token: "operator-device-token",
+      token: "explicit-token",
     });
 
     expect(lastClientOptions?.url).toBe("ws://127.0.0.1:18789");
-    expect(lastClientOptions?.token).toBe("operator-device-token");
-    expect(lastClientOptions?.clientName).toBe(GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT);
-    expect(lastClientOptions?.mode).toBe(GATEWAY_CLIENT_MODES.BACKEND);
-    expect(lastClientOptions?.deviceIdentity).toEqual(deviceIdentityState.value);
+    expect(lastClientOptions?.token).toBe("explicit-token");
+    expect(lastClientOptions?.deviceIdentity).toBeNull();
   });
 
   it("fails before opening a websocket when backend token auth has no shared or paired credential", async () => {
@@ -1763,6 +1777,7 @@ describe("callGateway password resolution", () => {
       "OPENCLAW_GATEWAY_PASSWORD",
       "OPENCLAW_GATEWAY_TOKEN",
       "LOCAL_REMOTE_FALLBACK_TOKEN",
+      "LOCAL_REF_TOKEN",
       "LOCAL_REF_PASSWORD",
       "REMOTE_REF_TOKEN",
       "REMOTE_REF_PASSWORD",
@@ -1771,6 +1786,7 @@ describe("callGateway password resolution", () => {
     delete process.env.OPENCLAW_GATEWAY_PASSWORD;
     delete process.env.OPENCLAW_GATEWAY_TOKEN;
     delete process.env.LOCAL_REMOTE_FALLBACK_TOKEN;
+    delete process.env.LOCAL_REF_TOKEN;
     delete process.env.LOCAL_REF_PASSWORD;
     delete process.env.REMOTE_REF_TOKEN;
     delete process.env.REMOTE_REF_PASSWORD;

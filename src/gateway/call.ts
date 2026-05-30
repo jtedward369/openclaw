@@ -404,17 +404,14 @@ function isLoopbackGatewayUrl(rawUrl: string): boolean {
 
 function shouldOmitDeviceIdentityForGatewayCall(params: {
   opts: CallGatewayBaseOptions;
-  config: OpenClawConfig;
   url: string;
   token?: string;
+  tokenIsSharedAuth: boolean;
   password?: string;
 }): boolean {
   const mode = params.opts.mode ?? GATEWAY_CLIENT_MODES.CLI;
   const clientName = params.opts.clientName ?? GATEWAY_CLIENT_NAMES.CLI;
-  const auth = resolveGatewayCallAuth(params.config);
-  const tokenMatchesSharedAuth =
-    Boolean(params.token) && auth.mode === "token" && auth.token === params.token;
-  const hasSharedAuth = Boolean(params.password || tokenMatchesSharedAuth);
+  const hasSharedAuth = Boolean(params.password || (params.token && params.tokenIsSharedAuth));
   return (
     mode === GATEWAY_CLIENT_MODES.BACKEND &&
     clientName === GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT &&
@@ -423,11 +420,18 @@ function shouldOmitDeviceIdentityForGatewayCall(params: {
   );
 }
 
+function isBackendGatewayClientCall(opts: CallGatewayBaseOptions): boolean {
+  return (
+    (opts.mode ?? GATEWAY_CLIENT_MODES.BACKEND) === GATEWAY_CLIENT_MODES.BACKEND &&
+    (opts.clientName ?? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT) === GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT
+  );
+}
+
 function resolveDeviceIdentityForGatewayCall(params: {
   opts: CallGatewayBaseOptions;
-  config: OpenClawConfig;
   url: string;
   token?: string;
+  tokenIsSharedAuth: boolean;
   password?: string;
 }): ReturnType<typeof loadOrCreateDeviceIdentity> | null {
   if (shouldOmitDeviceIdentityForGatewayCall(params)) {
@@ -1025,9 +1029,23 @@ async function callGatewayWithScopes<T = Record<string, unknown>>(
   const url = connectionDetails.url;
   const tlsFingerprint = await resolveGatewayTlsFingerprint({ opts, context, url });
   const { token, password } = resolvedCredentials;
+  const configuredCredentials = context.explicitAuth.token
+    ? await resolveGatewayCredentialsWithEnv(
+        {
+          ...context,
+          explicitAuth: {},
+        },
+        process.env,
+      )
+    : resolvedCredentials;
+  const tokenIsSharedAuth = Boolean(
+    token &&
+    (configuredCredentials.token === token ||
+      (context.explicitAuth.token && isBackendGatewayClientCall(opts))),
+  );
   const deviceIdentity =
     opts.deviceIdentity === undefined
-      ? resolveDeviceIdentityForGatewayCall({ opts, config: context.config, url, token, password })
+      ? resolveDeviceIdentityForGatewayCall({ opts, url, token, tokenIsSharedAuth, password })
       : opts.deviceIdentity;
   ensureGatewayCallCanAuthenticate({
     opts,

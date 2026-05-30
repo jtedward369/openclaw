@@ -27,7 +27,7 @@ export async function callGatewayFromCliRuntime(
 ) {
   const showProgress = extra?.progress ?? opts.json !== true;
   const useDirectAuth =
-    shouldUseDirectLoopbackGatewayAuth(opts) &&
+    (await shouldUseDirectLoopbackGatewayAuth(opts)) &&
     extra?.clientName === undefined &&
     extra?.mode === undefined &&
     extra?.deviceIdentity === undefined;

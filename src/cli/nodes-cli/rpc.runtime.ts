@@ -29,7 +29,7 @@ export async function callGatewayCliRuntime(
       enabled: opts.json !== true,
     },
     async () => {
-      const useDirectAuth = shouldUseDirectLoopbackGatewayAuth(opts);
+      const useDirectAuth = await shouldUseDirectLoopbackGatewayAuth(opts);
       return await callGateway({
         url: opts.url,
         token: opts.token,
@@ -72,7 +72,7 @@ export async function callNodePairApprovalGatewayCliRuntime(
         clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
         mode: GATEWAY_CLIENT_MODES.BACKEND,
         scopes: callOpts.scopes,
-        deviceIdentity: shouldUseDirectLoopbackGatewayAuth(opts) ? null : undefined,
+        deviceIdentity: (await shouldUseDirectLoopbackGatewayAuth(opts)) ? null : undefined,
       }),
   );
 }

@@ -38,7 +38,7 @@ export const callGatewayCli = async (method: string, opts: GatewayRpcOpts, param
       enabled: opts.json !== true,
     },
     async () => {
-      const useDirectAuth = shouldUseDirectLoopbackGatewayAuth(opts);
+      const useDirectAuth = await shouldUseDirectLoopbackGatewayAuth(opts);
       return await callGateway({
         config: opts.config,
         url: opts.url,

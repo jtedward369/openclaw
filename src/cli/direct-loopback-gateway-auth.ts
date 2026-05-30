@@ -2,6 +2,7 @@ import { loadConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
+import { resolveGatewayConnectionAuth } from "../gateway/connection-auth.js";
 import { isLoopbackHost } from "../gateway/net.js";
 import { normalizeStringifiedOptionalString } from "../shared/string-coerce.js";
 
@@ -12,10 +13,10 @@ export type DirectLoopbackGatewayAuthOpts = {
   config?: OpenClawConfig;
 };
 
-function isConfiguredSharedGatewayToken(params: {
+async function isConfiguredSharedGatewayToken(params: {
   token: string | undefined;
   config?: OpenClawConfig;
-}): boolean {
+}): Promise<boolean> {
   if (!params.token) {
     return false;
   }
@@ -25,7 +26,17 @@ function isConfiguredSharedGatewayToken(params: {
     tailscaleMode: config?.gateway?.tailscale?.mode,
     env: process.env,
   });
-  return auth.mode === "token" && auth.token === params.token;
+  if (auth.mode !== "token") {
+    return false;
+  }
+  if (!config) {
+    return auth.token === params.token;
+  }
+  const credentials = await resolveGatewayConnectionAuth({
+    config,
+    env: process.env,
+  });
+  return credentials.token === params.token;
 }
 
 function loadConfigForDirectAuthProbe(): OpenClawConfig | undefined {
@@ -36,11 +47,13 @@ function loadConfigForDirectAuthProbe(): OpenClawConfig | undefined {
   }
 }
 
-export function shouldUseDirectLoopbackGatewayAuth(opts: DirectLoopbackGatewayAuthOpts): boolean {
+export async function shouldUseDirectLoopbackGatewayAuth(
+  opts: DirectLoopbackGatewayAuthOpts,
+): Promise<boolean> {
   const token = normalizeStringifiedOptionalString(opts.token);
   const password = normalizeStringifiedOptionalString(opts.password);
   const hasExplicitSharedAuth = Boolean(
-    password || isConfiguredSharedGatewayToken({ token, config: opts.config }),
+    password || (await isConfiguredSharedGatewayToken({ token, config: opts.config })),
   );
   if (!hasExplicitSharedAuth) {
     return false;

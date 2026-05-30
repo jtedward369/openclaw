@@ -127,7 +127,7 @@ const callGatewayCli = async (
       enabled: opts.json !== true,
     },
     async () => {
-      const useDirectAuth = shouldUseDirectLoopbackGatewayAuth(opts);
+      const useDirectAuth = await shouldUseDirectLoopbackGatewayAuth(opts);
       return await callGateway({
         url: opts.url,
         token: opts.token,
