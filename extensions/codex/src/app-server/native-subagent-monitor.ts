@@ -5,6 +5,8 @@ import { embeddedAgentLog, formatErrorMessage } from "openclaw/plugin-sdk/agent-
 import {
   createAgentHarnessTaskRuntime,
   deliverAgentHarnessTaskCompletion,
+  emitAgentHarnessSubagentEndedHook,
+  emitAgentHarnessSubagentSpawnedHook,
   isDurableAgentHarnessCompletionDelivery,
   type AgentHarnessTaskRuntimeScope,
   type AgentHarnessTaskRuntime,
@@ -32,6 +34,8 @@ import { isJsonObject } from "./protocol.js";
 type NativeSubagentMonitorRuntime = {
   createAgentHarnessTaskRuntime: typeof createAgentHarnessTaskRuntime;
   deliverAgentHarnessTaskCompletion: typeof deliverAgentHarnessTaskCompletion;
+  emitAgentHarnessSubagentSpawnedHook: typeof emitAgentHarnessSubagentSpawnedHook;
+  emitAgentHarnessSubagentEndedHook: typeof emitAgentHarnessSubagentEndedHook;
 };
 
 type ParentState = {
@@ -82,6 +86,8 @@ const RECENT_TERMINAL_TASK_RECONCILE_GRACE_MS = 60_000;
 const defaultRuntime: NativeSubagentMonitorRuntime = {
   createAgentHarnessTaskRuntime,
   deliverAgentHarnessTaskCompletion,
+  emitAgentHarnessSubagentSpawnedHook,
+  emitAgentHarnessSubagentEndedHook,
 };
 
 const monitors = new WeakMap<CodexAppServerClient, CodexNativeSubagentMonitor>();
@@ -196,7 +202,7 @@ export class CodexNativeSubagentMonitor {
     const state = this.resolveMirrorState(notification);
     if (state?.mirror) {
       try {
-        state.mirror.handleNotification(notification);
+        await state.mirror.handleNotification(notification);
       } catch (error) {
         embeddedAgentLog.warn("Failed to mirror Codex native subagent lifecycle event", {
           method: notification.method,
@@ -221,9 +227,14 @@ export class CodexNativeSubagentMonitor {
       {
         parentThreadId: state.parentThreadId,
         requesterSessionKey: state.requesterSessionKey,
+        taskRuntimeScope: state.taskRuntimeScope,
         agentId: state.agentId,
       },
       state.taskRuntime,
+      {
+        emitSubagentSpawnedHook: this.runtime.emitAgentHarnessSubagentSpawnedHook,
+        emitSubagentEndedHook: this.runtime.emitAgentHarnessSubagentEndedHook,
+      },
     );
   }
 

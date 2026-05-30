@@ -68,6 +68,8 @@ function createRuntime() {
         path: "direct" as const,
       }),
     ),
+    emitAgentHarnessSubagentSpawnedHook: vi.fn(async () => {}),
+    emitAgentHarnessSubagentEndedHook: vi.fn(async () => {}),
   };
 }
 

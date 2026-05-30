@@ -1,7 +1,9 @@
+import type { AgentHarnessTaskRuntimeScope } from "openclaw/plugin-sdk/agent-harness-task-runtime";
 import { describe, expect, it, vi } from "vitest";
 import {
   codexNativeSubagentRunId,
   CodexNativeSubagentTaskMirror,
+  type TaskLifecycleHookRuntime,
   type TaskLifecycleRuntime,
 } from "./native-subagent-task-mirror.js";
 
@@ -11,6 +13,17 @@ function createRuntime() {
     recordTaskRunProgressByRunId: vi.fn(() => []),
     finalizeTaskRunByRunId: vi.fn(() => []),
   } as unknown as TaskLifecycleRuntime;
+}
+
+function createHookRuntime() {
+  return {
+    emitSubagentSpawnedHook: vi.fn(async () => {}),
+    emitSubagentEndedHook: vi.fn(async () => {}),
+  } satisfies TaskLifecycleHookRuntime;
+}
+
+function createTaskScope(requesterSessionKey = "agent:main:main") {
+  return { requesterSessionKey } as AgentHarnessTaskRuntimeScope;
 }
 
 describe("CodexNativeSubagentTaskMirror", () => {
@@ -136,6 +149,87 @@ describe("CodexNativeSubagentTaskMirror", () => {
     expect(runtime.createRunningTaskRun).toHaveBeenCalledTimes(1);
   });
 
+  it("emits subagent_spawned when a native Codex thread is first mirrored", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const taskRuntimeScope = createTaskScope("agent:main:discord:channel:C123");
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:discord:channel:C123",
+        taskRuntimeScope,
+        agentId: "main",
+      },
+      runtime,
+      hookRuntime,
+    );
+
+    mirror.handleNotification({
+      method: "thread/started",
+      params: {
+        thread: {
+          id: "child-thread",
+          preview: "inspect the repo",
+          source: {
+            subAgent: {
+              thread_spawn: {
+                parent_thread_id: "parent-thread",
+                depth: 1,
+                agent_nickname: "research",
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(hookRuntime.emitSubagentSpawnedHook).toHaveBeenCalledTimes(1);
+    expect(hookRuntime.emitSubagentSpawnedHook).toHaveBeenCalledWith({
+      scope: taskRuntimeScope,
+      runId: "codex-thread:child-thread",
+      childSessionKey: "codex-thread:child-thread",
+      agentId: "main",
+      label: "research",
+      threadRequested: false,
+      mode: "run",
+    });
+  });
+
+  it("deduplicates subagent_spawned hook emission for repeated thread mirrors", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:main",
+        taskRuntimeScope: createTaskScope(),
+      },
+      runtime,
+      hookRuntime,
+    );
+    const notification = {
+      method: "thread/started",
+      params: {
+        thread: {
+          id: "child-thread",
+          source: {
+            subAgent: {
+              thread_spawn: {
+                parent_thread_id: "parent-thread",
+                depth: 1,
+              },
+            },
+          },
+        },
+      },
+    } as const;
+
+    mirror.handleNotification(notification);
+    mirror.handleNotification(notification);
+
+    expect(hookRuntime.emitSubagentSpawnedHook).toHaveBeenCalledTimes(1);
+  });
+
   it("maps Codex thread status changes onto the mirrored task run", () => {
     const runtime = createRuntime();
     const mirror = new CodexNativeSubagentTaskMirror(
@@ -179,6 +273,89 @@ describe("CodexNativeSubagentTaskMirror", () => {
       progressSummary: "Codex native subagent hit a system error.",
       terminalSummary: "Codex native subagent failed.",
     });
+  });
+
+  it("emits subagent_ended when native Codex thread status becomes terminal", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const taskRuntimeScope = createTaskScope();
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:main",
+        taskRuntimeScope,
+        now: () => 30_000,
+      },
+      runtime,
+      hookRuntime,
+    );
+
+    mirror.handleNotification({
+      method: "thread/status/changed",
+      params: {
+        threadId: "child-thread",
+        status: { type: "idle" },
+      },
+    });
+    mirror.handleNotification({
+      method: "thread/status/changed",
+      params: {
+        threadId: "failed-child",
+        status: { type: "systemError" },
+      },
+    });
+
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(1, {
+      scope: taskRuntimeScope,
+      runId: "codex-thread:child-thread",
+      targetSessionKey: "codex-thread:child-thread",
+      reason: "subagent-complete",
+      outcome: "ok",
+      endedAt: 30_000,
+      error: undefined,
+    });
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(2, {
+      scope: taskRuntimeScope,
+      runId: "codex-thread:failed-child",
+      targetSessionKey: "codex-thread:failed-child",
+      reason: "subagent-error",
+      outcome: "error",
+      endedAt: 30_000,
+      error: "Codex app-server reported a system error for the native subagent thread.",
+    });
+  });
+
+  it("emits subagent_ended only once for a native Codex child run", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:main",
+        taskRuntimeScope: createTaskScope(),
+        now: () => 30_000,
+      },
+      runtime,
+      hookRuntime,
+    );
+
+    mirror.handleNotification({
+      method: "thread/status/changed",
+      params: {
+        threadId: "child-thread",
+        status: { type: "idle" },
+      },
+    });
+    mirror.handleNotification({
+      method: "thread/status/changed",
+      params: {
+        threadId: "child-thread",
+        status: { type: "systemError" },
+      },
+    });
+
+    expect(runtime.finalizeTaskRunByRunId).toHaveBeenCalledTimes(2);
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenCalledTimes(1);
   });
 
   it("creates and updates tasks from Codex collab agent item state", () => {
@@ -255,6 +432,46 @@ describe("CodexNativeSubagentTaskMirror", () => {
       lastEventAt: 40_000,
       progressSummary: "done",
       terminalSummary: "done",
+    });
+  });
+
+  it("emits subagent_spawned from Codex collab spawn item state", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const taskRuntimeScope = createTaskScope();
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:main",
+        taskRuntimeScope,
+        agentId: "main",
+        now: () => 40_000,
+      },
+      runtime,
+      hookRuntime,
+    );
+
+    mirror.handleNotification({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "collabAgentToolCall",
+          tool: "spawnAgent",
+          senderThreadId: "parent-thread",
+          receiverThreadIds: ["child-thread"],
+          prompt: "write the proof file",
+        },
+      },
+    });
+
+    expect(hookRuntime.emitSubagentSpawnedHook).toHaveBeenCalledWith({
+      scope: taskRuntimeScope,
+      runId: "codex-thread:child-thread",
+      childSessionKey: "codex-thread:child-thread",
+      agentId: "main",
+      label: "Codex subagent",
+      threadRequested: false,
+      mode: "run",
     });
   });
 
@@ -621,5 +838,90 @@ describe("CodexNativeSubagentTaskMirror", () => {
       progressSummary: "done",
       terminalSummary: "done",
     });
+  });
+
+  it("emits subagent_ended for completed, blocked, failed, interrupted, and shutdown collab statuses", () => {
+    const runtime = createRuntime();
+    const hookRuntime = createHookRuntime();
+    const taskRuntimeScope = createTaskScope();
+    const mirror = new CodexNativeSubagentTaskMirror(
+      {
+        parentThreadId: "parent-thread",
+        requesterSessionKey: "agent:main:main",
+        taskRuntimeScope,
+        now: () => 61_000,
+      },
+      runtime,
+      hookRuntime,
+    );
+
+    mirror.handleNotification({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "collabAgentToolCall",
+          tool: "spawnAgent",
+          senderThreadId: "parent-thread",
+          agentsStates: {
+            completedChild: { status: "completed", message: "done" },
+            blockedChild: { status: "blocked", message: "needs input" },
+            failedChild: { status: "failed", message: "boom" },
+            interruptedChild: { status: "interrupted", message: "stopped by parent" },
+            shutdownChild: { status: "shutdown", message: "app-server stopped" },
+          },
+        },
+      },
+    });
+
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        scope: taskRuntimeScope,
+        runId: "codex-thread:completedChild",
+        targetSessionKey: "codex-thread:completedChild",
+        reason: "subagent-complete",
+        outcome: "ok",
+        endedAt: 61_000,
+      }),
+    );
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        runId: "codex-thread:blockedChild",
+        targetSessionKey: "codex-thread:blockedChild",
+        reason: "subagent-complete",
+        outcome: "ok",
+      }),
+    );
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        runId: "codex-thread:failedChild",
+        targetSessionKey: "codex-thread:failedChild",
+        reason: "subagent-error",
+        outcome: "error",
+        error: "boom",
+      }),
+    );
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        runId: "codex-thread:interruptedChild",
+        targetSessionKey: "codex-thread:interruptedChild",
+        reason: "subagent-killed",
+        outcome: "killed",
+        error: "stopped by parent",
+      }),
+    );
+    expect(hookRuntime.emitSubagentEndedHook).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({
+        runId: "codex-thread:shutdownChild",
+        targetSessionKey: "codex-thread:shutdownChild",
+        reason: "subagent-killed",
+        outcome: "killed",
+        error: "app-server stopped",
+      }),
+    );
   });
 });

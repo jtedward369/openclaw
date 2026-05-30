@@ -1,4 +1,16 @@
-import type { AgentHarnessTaskRuntime } from "openclaw/plugin-sdk/agent-harness-task-runtime";
+import type {
+  AgentHarnessTaskRuntime,
+  AgentHarnessTaskRuntimeScope,
+  emitAgentHarnessSubagentEndedHook,
+  emitAgentHarnessSubagentSpawnedHook,
+  SubagentLifecycleEndedOutcome,
+  SubagentLifecycleEndedReason,
+} from "openclaw/plugin-sdk/agent-harness-task-runtime";
+import {
+  resolveAgentHarnessFailedSubagentEnd,
+  resolveAgentHarnessKilledSubagentEnd,
+  resolveAgentHarnessSucceededSubagentEnd,
+} from "openclaw/plugin-sdk/agent-harness-task-runtime";
 import { CODEX_NATIVE_SUBAGENT_RUN_ID_PREFIX } from "./native-subagent-task-ids.js";
 import type {
   CodexServerNotification,
@@ -18,9 +30,23 @@ export type TaskLifecycleRuntime = Pick<
   "createRunningTaskRun" | "recordTaskRunProgressByRunId" | "finalizeTaskRunByRunId"
 >;
 
+export type TaskLifecycleHookRuntime = {
+  emitSubagentSpawnedHook: typeof emitAgentHarnessSubagentSpawnedHook;
+  emitSubagentEndedHook: typeof emitAgentHarnessSubagentEndedHook;
+};
+
+type EndedHookParams = {
+  runId: string;
+  reason: SubagentLifecycleEndedReason;
+  outcome: SubagentLifecycleEndedOutcome;
+  endedAt: number;
+  error?: string;
+};
+
 export type CodexNativeSubagentTaskMirrorParams = {
   parentThreadId: string;
   requesterSessionKey?: string;
+  taskRuntimeScope?: AgentHarnessTaskRuntimeScope;
   agentId?: string;
   now?: () => number;
 };
@@ -28,11 +54,13 @@ export type CodexNativeSubagentTaskMirrorParams = {
 export class CodexNativeSubagentTaskMirror {
   private readonly mirroredThreadIds = new Set<string>();
   private readonly terminalRunIds = new Set<string>();
+  private readonly endedHookRunIds = new Set<string>();
   private readonly now: () => number;
 
   constructor(
     private readonly params: CodexNativeSubagentTaskMirrorParams,
     private readonly runtime: TaskLifecycleRuntime,
+    private readonly hookRuntime?: TaskLifecycleHookRuntime,
   ) {
     this.now = params.now ?? Date.now;
   }
@@ -94,6 +122,11 @@ export class CodexNativeSubagentTaskMirror {
       lastEventAt: this.now(),
       progressSummary: "Codex native subagent started.",
     });
+    this.emitSpawnedHook({
+      runId,
+      childSessionKey: runId,
+      label,
+    });
     this.applyStatus(threadId, thread.status);
   }
 
@@ -133,6 +166,11 @@ export class CodexNativeSubagentTaskMirror {
         progressSummary: "Codex native subagent is idle.",
         terminalSummary: "Codex native subagent finished.",
       });
+      this.emitEndedHook({
+        runId,
+        endedAt: eventAt,
+        ...resolveAgentHarnessSucceededSubagentEnd(),
+      });
       return;
     }
     if (statusType === "systemError") {
@@ -145,6 +183,12 @@ export class CodexNativeSubagentTaskMirror {
         error: "Codex app-server reported a system error for the native subagent thread.",
         progressSummary: "Codex native subagent hit a system error.",
         terminalSummary: "Codex native subagent failed.",
+      });
+      this.emitEndedHook({
+        runId,
+        endedAt: eventAt,
+        error: "Codex app-server reported a system error for the native subagent thread.",
+        ...resolveAgentHarnessFailedSubagentEnd(),
       });
       return;
     }
@@ -232,6 +276,11 @@ export class CodexNativeSubagentTaskMirror {
       lastEventAt: createdAt,
       progressSummary: "Codex native subagent spawned.",
     });
+    this.emitSpawnedHook({
+      runId,
+      childSessionKey: runId,
+      label: "Codex subagent",
+    });
   }
 
   private applyCollabAgentStatus(
@@ -270,6 +319,11 @@ export class CodexNativeSubagentTaskMirror {
         progressSummary: trimOptional(message) ?? "Codex native subagent completed.",
         terminalSummary: trimOptional(message) ?? "Codex native subagent finished.",
       });
+      this.emitEndedHook({
+        runId,
+        endedAt: eventAt,
+        ...resolveAgentHarnessSucceededSubagentEnd(),
+      });
       return;
     }
     if (normalizedStatus === "blocked") {
@@ -283,8 +337,18 @@ export class CodexNativeSubagentTaskMirror {
         terminalSummary: trimOptional(message) ?? "Codex native subagent blocked.",
         terminalOutcome: "blocked",
       });
+      this.emitEndedHook({
+        runId,
+        endedAt: eventAt,
+        ...resolveAgentHarnessSucceededSubagentEnd(),
+      });
       return;
     }
+    const terminalEnd =
+      normalizedStatus === "interrupted" || normalizedStatus === "shutdown"
+        ? resolveAgentHarnessKilledSubagentEnd()
+        : resolveAgentHarnessFailedSubagentEnd();
+    const error = trimOptional(message) ?? `Codex native subagent status: ${normalizedStatus}`;
     this.terminalRunIds.add(runId);
     this.runtime.finalizeTaskRunByRunId({
       runId,
@@ -294,9 +358,49 @@ export class CodexNativeSubagentTaskMirror {
           : "failed",
       endedAt: eventAt,
       lastEventAt: eventAt,
-      error: trimOptional(message) ?? `Codex native subagent status: ${normalizedStatus}`,
+      error,
       progressSummary: trimOptional(message) ?? `Codex native subagent ${normalizedStatus}.`,
       terminalSummary: trimOptional(message) ?? "Codex native subagent did not complete.",
+    });
+    this.emitEndedHook({
+      runId,
+      endedAt: eventAt,
+      error,
+      ...terminalEnd,
+    });
+  }
+
+  private emitSpawnedHook(params: { runId: string; childSessionKey: string; label: string }): void {
+    if (!this.params.taskRuntimeScope || !this.hookRuntime) {
+      return;
+    }
+    void this.hookRuntime.emitSubagentSpawnedHook({
+      scope: this.params.taskRuntimeScope,
+      runId: params.runId,
+      childSessionKey: params.childSessionKey,
+      agentId: this.params.agentId,
+      label: params.label,
+      threadRequested: false,
+      mode: "run",
+    });
+  }
+
+  private emitEndedHook(params: EndedHookParams): void {
+    if (!this.params.taskRuntimeScope || !this.hookRuntime) {
+      return;
+    }
+    if (this.endedHookRunIds.has(params.runId)) {
+      return;
+    }
+    this.endedHookRunIds.add(params.runId);
+    void this.hookRuntime.emitSubagentEndedHook({
+      scope: this.params.taskRuntimeScope,
+      runId: params.runId,
+      targetSessionKey: params.runId,
+      reason: params.reason,
+      outcome: params.outcome,
+      endedAt: params.endedAt,
+      error: params.error,
     });
   }
 }
