@@ -392,6 +392,8 @@ export async function runCodexAppServerAttempt(
   const configuredAppServer = resolveCodexAppServerRuntimeOptions({
     pluginConfig,
     execPolicy,
+    modelProvider: params.provider,
+    model: params.modelId,
     openClawSandboxActive: sandbox?.enabled === true,
   });
   const effectiveWorkspace = sandbox?.enabled
