@@ -42,6 +42,12 @@ function formatTokenHint(token: string, opts: { showSecrets: boolean }): string 
   return `${head}…${tail} · len ${t.length}`;
 }
 
+/**
+ * Summarize credential readiness for enabled channel accounts.
+ *
+ * Multi-token providers are intentionally checked before single-token providers
+ * so bot+signing and bot+app setups report partial/missing credentials precisely.
+ */
 export function summarizeTokenConfig(params: {
   accounts: ChannelAccountTokenSummaryRow[];
   showSecrets: boolean;
@@ -97,6 +103,8 @@ export function summarizeTokenConfig(params: {
       return (hasBot && !hasSigning) || (!hasBot && hasSigning);
     });
 
+    // HTTP channel webhook setup needs both bot token and signing secret; either
+    // credential alone is unsafe to report as ready.
     if (unavailable.length > 0) {
       return {
         state: "warn",
