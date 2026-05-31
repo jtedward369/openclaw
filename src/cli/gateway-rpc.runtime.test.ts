@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const callGatewayMock = vi.fn(async () => ({ ok: true }));
 vi.mock("../gateway/call.js", () => ({
+  buildGatewayConnectionDetails: () => ({
+    url: "ws://127.0.0.1:18789",
+    urlSource: "local loopback",
+  }),
   callGateway: callGatewayMock,
   resolveGatewayCliScopes: (method: string) =>
     method === "health"

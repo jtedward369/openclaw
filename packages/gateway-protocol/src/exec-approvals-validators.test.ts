@@ -3,6 +3,7 @@ import {
   validateExecApprovalRequestParams,
   validateExecApprovalsNodeSetParams,
   validateExecApprovalsSetParams,
+  validateExecApprovalsSnapshot,
 } from "./index.js";
 
 describe("exec approvals protocol validators", () => {
@@ -46,6 +47,18 @@ describe("exec approvals protocol validators", () => {
           rules: [{ pattern: "echo *", action: "allow", enabled: true }],
         },
         baseHash: "native-hash-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts host-native node approval snapshot payloads", () => {
+    expect(
+      validateExecApprovalsSnapshot({
+        enabled: true,
+        defaultAction: "deny",
+        hash: "native-hash-1",
+        rules: [{ pattern: "hostname", action: "allow", enabled: true }],
+        constraints: { source: "windows-node" },
       }),
     ).toBe(true);
   });

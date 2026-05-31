@@ -27,6 +27,10 @@ const { callGatewaySpy } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../gateway/call.js", () => ({
+  buildGatewayConnectionDetails: () => ({
+    url: "ws://127.0.0.1:18789",
+    urlSource: "local loopback",
+  }),
   callGateway: callGatewaySpy,
   randomIdempotencyKey: () => "mock-key",
   resolveGatewayCliScopes: () => [
