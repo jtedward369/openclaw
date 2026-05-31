@@ -842,6 +842,37 @@ describe("runCodexAppServerSideQuestion", () => {
     expect(config?.["features.code_mode_only"]).toBe(true);
   });
 
+  it("keeps Codex code-mode-only while disabling Guardian for provider-qualified local models", async () => {
+    const client = createFakeClient();
+    getSharedCodexAppServerClientMock.mockResolvedValue(client);
+
+    await expect(
+      runCodexAppServerSideQuestion(
+        sideParams({
+          provider: "codex",
+          model: "lmstudio/local-model",
+        }),
+        {
+          pluginConfig: {
+            appServer: {
+              mode: "guardian",
+              codeModeOnly: true,
+            },
+          },
+        },
+      ),
+    ).resolves.toEqual({ text: "Side answer." });
+
+    const forkParams = mockCall(client.request)[1] as Record<string, unknown> | undefined;
+    const config = forkParams?.config as Record<string, unknown> | undefined;
+    expect(forkParams?.model).toBe("lmstudio/local-model");
+    expect(forkParams).not.toHaveProperty("modelProvider");
+    expect(forkParams?.approvalPolicy).toBe("on-request");
+    expect(forkParams?.approvalsReviewer).toBe("user");
+    expect(config?.["features.code_mode"]).toBe(true);
+    expect(config?.["features.code_mode_only"]).toBe(true);
+  });
+
   it("keeps native hook relays alive across side-thread startup and completion timeouts", async () => {
     const client = createFakeClient();
     const requestTimeoutMs = 400_000;

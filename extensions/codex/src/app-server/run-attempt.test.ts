@@ -4623,6 +4623,85 @@ describe("runCodexAppServerAttempt", () => {
     expect(turnRequestParams?.serviceTier).toBe("priority");
   });
 
+  it("uses human approval instead of Guardian for auto exec on custom model providers", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const { requests, waitForMethod, completeTurn } = createStartedThreadHarness();
+    const params = {
+      ...createParams(sessionFile, workspaceDir),
+      provider: "lmstudio",
+      modelId: "local-model",
+      model: createCodexTestModel("lmstudio"),
+      config: {
+        tools: {
+          exec: {
+            mode: "auto",
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams;
+
+    const run = runCodexAppServerAttempt(params, { pluginConfig: {} });
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    await run;
+
+    const startRequest = requests.find((request) => request.method === "thread/start");
+    const startRequestParams = startRequest?.params as Record<string, unknown> | undefined;
+    expect(startRequestParams?.modelProvider).toBe("lmstudio");
+    expect(startRequestParams?.approvalPolicy).toBe("on-request");
+    expect(startRequestParams?.approvalsReviewer).toBe("user");
+    expect(startRequestParams?.sandbox).toBe("workspace-write");
+
+    const turnRequest = requests.find((request) => request.method === "turn/start");
+    const turnRequestParams = turnRequest?.params as Record<string, unknown> | undefined;
+    expect(turnRequestParams?.approvalPolicy).toBe("on-request");
+    expect(turnRequestParams?.approvalsReviewer).toBe("user");
+  });
+
+  it("keeps Codex code-mode-only while disabling Guardian for provider-qualified local models", async () => {
+    const sessionFile = path.join(tempDir, "session.jsonl");
+    const workspaceDir = path.join(tempDir, "workspace");
+    const { requests, waitForMethod, completeTurn } = createStartedThreadHarness();
+    const params = {
+      ...createParams(sessionFile, workspaceDir),
+      provider: "codex",
+      modelId: "lmstudio/local-model",
+      config: {
+        tools: {
+          exec: {
+            mode: "auto",
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams;
+
+    const run = runCodexAppServerAttempt(params, {
+      pluginConfig: {
+        appServer: {
+          codeModeOnly: true,
+        },
+      },
+    });
+    await waitForMethod("turn/start");
+    await completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    await run;
+
+    const startRequest = requests.find((request) => request.method === "thread/start");
+    const startRequestParams = startRequest?.params as Record<string, unknown> | undefined;
+    const startConfig = startRequestParams?.config as Record<string, unknown> | undefined;
+    expect(startRequestParams?.model).toBe("lmstudio/local-model");
+    expect(startRequestParams).not.toHaveProperty("modelProvider");
+    expect(startRequestParams?.approvalPolicy).toBe("on-request");
+    expect(startRequestParams?.approvalsReviewer).toBe("user");
+    expect(startConfig?.["features.code_mode"]).toBe(true);
+    expect(startConfig?.["features.code_mode_only"]).toBe(true);
+
+    const turnRequest = requests.find((request) => request.method === "turn/start");
+    const turnRequestParams = turnRequest?.params as Record<string, unknown> | undefined;
+    expect(turnRequestParams?.approvalsReviewer).toBe("user");
+  });
+
   it("reuses the bound auth profile for app-server startup when params omit it", async () => {
     const sessionFile = path.join(tempDir, "session.jsonl");
     const workspaceDir = path.join(tempDir, "workspace");

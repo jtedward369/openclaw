@@ -45,7 +45,10 @@ import {
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { loadExecApprovals } from "openclaw/plugin-sdk/exec-approvals-runtime";
 import { pathExists } from "openclaw/plugin-sdk/security-runtime";
-import { resolveCodexAppServerForOpenClawToolPolicy } from "./app-server-policy.js";
+import {
+  resolveCodexAppServerForModelProvider,
+  resolveCodexAppServerForOpenClawToolPolicy,
+} from "./app-server-policy.js";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
 import {
   CODEX_APP_SERVER_INTERRUPT_TIMEOUT_MS,
@@ -404,7 +407,7 @@ export async function runCodexAppServerAttempt(
   const effectiveCwd = sandbox?.enabled ? effectiveWorkspace : (requestedCwd ?? effectiveWorkspace);
   await ensureCodexWorkspaceDirOnce(effectiveWorkspace);
   preDynamicStartupStages.mark("effective-workspace");
-  const appServer = resolveCodexAppServerForOpenClawToolPolicy({
+  const policyAppServer = resolveCodexAppServerForOpenClawToolPolicy({
     appServer: configuredAppServer,
     pluginConfig,
     env: process.env,
@@ -415,6 +418,11 @@ export async function runCodexAppServerAttempt(
     canUseUntrustedApprovalPolicy:
       configuredAppServer.start.transport !== "stdio" ||
       isCodexAppServerApprovalPolicyAllowedByRequirements("untrusted"),
+  });
+  const appServer = resolveCodexAppServerForModelProvider({
+    appServer: policyAppServer,
+    provider: params.provider,
+    model: params.modelId,
   });
   if (configuredAppServer.approvalPolicy === "never" && appServer.approvalPolicy === "untrusted") {
     embeddedAgentLog.info("codex app-server approval policy promoted for OpenClaw tool policy", {

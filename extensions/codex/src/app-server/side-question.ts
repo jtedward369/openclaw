@@ -17,6 +17,7 @@ import {
   type NativeHookRelayEvent,
   type NativeHookRelayRegistrationHandle,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { resolveCodexAppServerForModelProvider } from "./app-server-policy.js";
 import { handleCodexAppServerApprovalRequest } from "./approval-bridge.js";
 import { refreshCodexAppServerAuthTokens } from "./auth-bridge.js";
 import { isCodexAppServerApprovalRequest, type CodexAppServerClient } from "./client.js";
@@ -321,6 +322,11 @@ export async function runCodexAppServerSideQuestion(
       agentDir: params.agentDir,
       config: params.cfg,
     });
+    const modelScopedAppServer = resolveCodexAppServerForModelProvider({
+      appServer,
+      provider: modelProvider ?? params.provider,
+      model: params.model,
+    });
     const forkResponse = assertCodexThreadForkResponse(
       await forkCodexSideThread(
         client,
@@ -331,7 +337,7 @@ export async function runCodexAppServerSideQuestion(
           personality: CODEX_NATIVE_PERSONALITY_NONE,
           cwd,
           approvalPolicy,
-          approvalsReviewer: appServer.approvalsReviewer,
+          approvalsReviewer: modelScopedAppServer.approvalsReviewer,
           sandbox,
           ...(serviceTier ? { serviceTier } : {}),
           config: threadConfig,
