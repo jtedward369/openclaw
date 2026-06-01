@@ -1,11 +1,13 @@
 import type { ChannelApprovalNativePlannedTarget } from "./approval-native-delivery.js";
 import type { ChannelApprovalKind } from "./approval-types.js";
 
+/** Prepared channel-specific target paired with the route key used for send dedupe. */
 export type PreparedChannelNativeApprovalTarget<TPreparedTarget> = {
   dedupeKey: string;
   target: TPreparedTarget;
 };
 
+/** Channel transport hooks used by the generic native approval runtime. */
 export type ChannelNativeApprovalTransportSpec<
   TPendingEntry,
   TPreparedTarget,
@@ -30,6 +32,7 @@ export type ChannelNativeApprovalTransportSpec<
   }) => TPendingEntry | null | Promise<TPendingEntry | null>;
 };
 
+/** Optional delivery lifecycle callbacks exposed to channel implementations. */
 export type ChannelNativeApprovalDeliveryCallbacks<
   TPendingEntry,
   TPreparedTarget,
