@@ -6,6 +6,8 @@ export const COMMAND_CARRIER_EXECUTABLES = new Set(["sudo", "doas", "env", "comm
 
 export const SOURCE_EXECUTABLES = new Set([".", "source"]);
 
+// Bounds recursive env -S expansion so malformed self-wrapping payloads cannot
+// keep splitting into new env invocations during policy analysis.
 const MAX_ENV_SPLIT_PAYLOAD_DEPTH = 32;
 
 const COMMAND_EXECUTING_OPTIONS = new Set(["-p"]);
@@ -93,6 +95,7 @@ const DOAS_STANDALONE_OPTIONS = new Set(["-L", "-n", "-s"]);
 const EXEC_OPTIONS_WITH_VALUE = new Set(["-a"]);
 const EXEC_STANDALONE_OPTIONS = new Set(["-c", "-l"]);
 
+/** Returns true for shell-style KEY=value tokens accepted by env/sudo preludes. */
 export function isEnvAssignmentToken(token: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*=.*$/u.test(token);
 }
@@ -209,12 +212,20 @@ function resolveEnvSplitPayload(
 }
 
 export type ParsedEnvInvocationPrelude = {
+  /** Assignment keys consumed before the carried command begins. */
   assignmentKeys: string[];
+  /** Index in the original argv where the carried command starts. */
   commandIndex: number;
+  /** Fully split argv from env -S/-s, when that option supplies the command. */
   splitArgv?: string[];
+  /** True when env options or assignments changed the invocation environment. */
   usesModifiers: boolean;
 };
 
+/**
+ * Parses the env prelude without executing shell expansion. Returns null when
+ * options are ambiguous enough that policy should keep the original argv.
+ */
 export function parseEnvInvocationPrelude(
   argv: string[],
   depth = 0,
@@ -277,16 +288,19 @@ export function parseEnvInvocationPrelude(
   return null;
 }
 
+/** Detects whether an env invocation changes environment state before dispatch. */
 export function envInvocationUsesModifiers(argv: string[]): boolean {
   const parsed = parseEnvInvocationPrelude(argv);
   return parsed?.usesModifiers ?? normalizeExecutableToken(argv[0] ?? "") === "env";
 }
 
+/** Returns the command argv carried by env, preserving env -S split payloads. */
 export function unwrapEnvInvocation(argv: string[]): string[] | null {
   const parsed = parseEnvInvocationPrelude(argv);
   return parsed ? (parsed.splitArgv ?? argv.slice(parsed.commandIndex)) : null;
 }
 
+/** Resolves env-carried argv for carrier analysis, including bounded env -S recursion. */
 export function resolveEnvCarriedArgv(argv: string[], depth = 0): string[] | null {
   const parsed = parseEnvInvocationPrelude(argv, depth);
   return parsed ? (parsed.splitArgv ?? argv.slice(parsed.commandIndex)) : null;
@@ -389,6 +403,7 @@ function resolveExecCarriedArgv(argv: string[]): string[] | null {
   return null;
 }
 
+/** Resolves the executable argv hidden behind known command-carrier wrappers. */
 export function resolveCarrierCommandArgv(
   argv: string[],
   depth = 0,
