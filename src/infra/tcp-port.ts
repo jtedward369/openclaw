@@ -8,6 +8,8 @@ export function parseTcpPort(raw: unknown): number | null {
   if (raw === undefined || raw === null) {
     return null;
   }
+  // Config/env ports name a concrete listener endpoint; reject 0 instead of
+  // treating it as the OS-assigned ephemeral-port sentinel used by tests.
   const parsed = parseStrictPositiveInteger(raw);
   if (parsed === undefined || parsed > MAX_TCP_PORT) {
     return null;
