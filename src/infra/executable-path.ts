@@ -71,7 +71,10 @@ function resolveWindowsExecutableExtSet(env: NodeJS.ProcessEnv | undefined): Set
   );
 }
 
-/** Checks whether a filesystem path names an executable file for the current platform. */
+/**
+ * Checks whether a filesystem path names an executable file for the current platform.
+ * Windows accepts PATHEXT-style extensions; POSIX requires executable permission.
+ */
 export function isExecutableFile(filePath: string): boolean {
   try {
     const stat = fs.statSync(filePath);
@@ -92,7 +95,7 @@ export function isExecutableFile(filePath: string): boolean {
   }
 }
 
-/** Resolves a bare executable through an explicit PATH string and PATHEXT policy. */
+/** Resolves a bare executable through an explicit PATH string and Windows PATHEXT policy. */
 export function resolveExecutableFromPathEnv(
   executable: string,
   pathEnv: string,
