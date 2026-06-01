@@ -253,6 +253,8 @@ function readCallRecordEvent(stores: CallRecordStateStores, eventKey: string): C
   for (let index = 0; index < meta.chunkCount; index += 1) {
     const chunk = stores.chunks.lookup(buildChunkKey(eventKey, index));
     if (!chunk || chunk.index !== index) {
+      // A partially pruned or corrupt chunk set should drop only that snapshot;
+      // older/newer snapshots can still restore the call.
       return null;
     }
     chunks.push(Buffer.from(chunk.dataBase64, "base64"));
@@ -264,6 +266,8 @@ function readCallRecordEvent(stores: CallRecordStateStores, eventKey: string): C
 function readCallRecordEvents(stores: CallRecordStateStores): CallRecord[] {
   const sqliteCalls: PersistedCallRecord[] = stores.events
     .entries()
+    // First sort by keyed-store creation order to make equal metadata stable
+    // before reconstructing each chunked snapshot.
     .toSorted((a, b) => a.createdAt - b.createdAt || a.key.localeCompare(b.key))
     .map((entry) => {
       const call = readCallRecordEvent(stores, entry.key);
@@ -280,6 +284,8 @@ function readCallRecordEvents(stores: CallRecordStateStores): CallRecord[] {
   return sqliteCalls
     .toSorted(
       (a, b) =>
+        // persistedAt + sequence are the canonical write order; orderKey is a
+        // final deterministic tie-breaker for migrated or malformed metadata.
         a.persistedAt - b.persistedAt ||
         a.sequence - b.sequence ||
         a.orderKey.localeCompare(b.orderKey),
@@ -330,6 +336,8 @@ export function loadActiveCallsFromStore(storePath: string): {
   }
   const callMap = new Map<CallId, CallRecord>();
   for (const call of calls) {
+    // Replaying the ordered snapshot log into a map leaves the newest snapshot
+    // per callId, matching the old append-only JSONL restore behavior.
     callMap.set(call.callId, call);
   }
 
