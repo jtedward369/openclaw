@@ -48,9 +48,11 @@ function createPlivoRequestDedupeKey(ctx: WebhookContext): string {
   if (nonceV2) {
     return `plivo:v2:${nonceV2}`;
   }
+  // Unsigned/dev callbacks still need stable replay keys, so fall back to the raw body hash.
   return `plivo:fallback:${crypto.createHash("sha256").update(ctx.rawBody).digest("hex")}`;
 }
 
+/** Plivo Call API provider with XML transfer flows for speak/listen call control. */
 export class PlivoProvider implements VoiceCallProvider {
   readonly name = "plivo" as const;
 
@@ -60,7 +62,7 @@ export class PlivoProvider implements VoiceCallProvider {
   private readonly options: PlivoProviderOptions;
   private readonly apiHost: string;
 
-  // Best-effort mapping between create-call request UUID and call UUID.
+  // Plivo create-call returns a request UUID first; later callbacks reveal the call UUID.
   private requestUuidToCallUuid = new Map<string, string>();
 
   // Used for transfer URLs and GetInput action URLs.
@@ -154,6 +156,7 @@ export class PlivoProvider implements VoiceCallProvider {
       const callId = this.getCallIdFromQuery(ctx);
       const pending = callId ? this.pendingSpeakByCallId.get(callId) : undefined;
       if (callId) {
+        // Pending XML payloads are single-use because Plivo fetches them via transfer callback.
         this.pendingSpeakByCallId.delete(callId);
       }
 
@@ -172,6 +175,7 @@ export class PlivoProvider implements VoiceCallProvider {
       const callId = this.getCallIdFromQuery(ctx);
       const pending = callId ? this.pendingListenByCallId.get(callId) : undefined;
       if (callId) {
+        // Pending listen options are single-use for the transfer callback that asks for XML.
         this.pendingListenByCallId.delete(callId);
       }
 
@@ -221,6 +225,7 @@ export class PlivoProvider implements VoiceCallProvider {
     const requestUuid = params.get("RequestUUID") || "";
 
     if (requestUuid && callUuid) {
+      // Connect outbound initiation IDs to call-control IDs once Plivo exposes both.
       this.requestUuidToCallUuid.set(requestUuid, callUuid);
     }
 
@@ -546,6 +551,7 @@ export class PlivoProvider implements VoiceCallProvider {
   private baseWebhookUrlFromCtx(ctx: WebhookContext): string | null {
     try {
       if (this.options.publicUrl) {
+        // Pin callbacks to configured public origin while preserving this webhook path.
         const base = new URL(this.options.publicUrl);
         const requestUrl = new URL(ctx.url);
         base.pathname = requestUrl.pathname;
