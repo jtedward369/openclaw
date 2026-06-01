@@ -23,6 +23,8 @@ export function isDirectChildSessionEntry(params: {
   if (!parentKey || params.sessionKey === parentKey || !params.entry) {
     return false;
   }
+  // `spawnedBy` is the modern lineage field; `parentSessionKey` remains for
+  // older rows and UI-created child sessions that predate the spawn metadata.
   return (
     normalizeOptionalString(params.entry.spawnedBy) === parentKey ||
     normalizeOptionalString(params.entry.parentSessionKey) === parentKey

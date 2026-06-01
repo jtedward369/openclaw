@@ -1,6 +1,8 @@
 import { getLatestSubagentRunByChildSessionKey } from "../agents/subagent-registry-read.js";
 
 async function loadSessionSubagentReactivationRuntime() {
+  // Keep the runtime replacement path lazy so ordinary session sends do not
+  // pull in registry mutation code unless a completed subagent is re-steered.
   return import("./session-subagent-reactivation.runtime.js");
 }
 
