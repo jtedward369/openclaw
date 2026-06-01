@@ -29,7 +29,9 @@ function withWindowsExeAliases(names: readonly string[]): string[] {
   return Array.from(expanded);
 }
 
+/** POSIX shells that can carry inline commands or startup-file policy risk. */
 export const POSIX_SHELL_WRAPPERS = new Set(POSIX_SHELL_WRAPPER_NAMES);
+/** PowerShell wrapper names, including Windows executable aliases. */
 export const POWERSHELL_WRAPPERS = new Set(withWindowsExeAliases(POWERSHELL_WRAPPER_NAMES));
 
 const POSIX_SHELL_WRAPPER_CANONICAL = new Set<string>(POSIX_SHELL_WRAPPER_NAMES);
@@ -170,6 +172,7 @@ type ShellMultiplexerUnwrapResult =
   | { kind: "blocked"; wrapper: string }
   | { kind: "unwrapped"; wrapper: string; argv: string[] };
 
+/** Unwraps busybox/toybox shell applets, blocking unknown applets as policy boundaries. */
 export function unwrapKnownShellMultiplexerInvocation(
   argv: string[],
 ): ShellMultiplexerUnwrapResult {
