@@ -1,10 +1,17 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resetProviderAuthAliasMapCacheForTest } from "../agents/provider-auth-aliases.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
-import { applySessionsPatchToStore } from "./sessions-patch.js";
+import {
+  applySessionsPatchProjection,
+  applySessionsPatchToStore,
+  patchGatewaySessionEntry,
+} from "./sessions-patch.js";
 
 const SUBAGENT_MODEL = "synthetic/hf:moonshotai/Kimi-K2.5";
 const KIMI_SUBAGENT_KEY = "agent:kimi:subagent:child";
@@ -17,6 +24,7 @@ const OPENAI_GPT_ID = "gpt-5.4";
 const EMPTY_CFG = {} as OpenClawConfig;
 
 type ApplySessionsPatchArgs = Parameters<typeof applySessionsPatchToStore>[0];
+const tempDirs: string[] = [];
 
 async function runPatch(params: {
   patch: ApplySessionsPatchArgs["patch"];
@@ -151,6 +159,14 @@ function expectAuthOverride(
   }
 }
 
+async function createTempStorePath(store: Record<string, SessionEntry> = {}) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-sessions-patch-"));
+  tempDirs.push(dir);
+  const storePath = path.join(dir, "sessions.json");
+  await fs.writeFile(storePath, JSON.stringify(store, null, 2), "utf8");
+  return storePath;
+}
+
 async function applySubagentModelPatch(cfg: OpenClawConfig) {
   return expectPatchOk(
     await runPatch({
@@ -209,9 +225,12 @@ function createAllowlistedAnthropicModelCfg(): OpenClawConfig {
 }
 
 describe("gateway sessions patch", () => {
-  afterEach(() => {
+  afterEach(async () => {
     resetProviderAuthAliasMapCacheForTest();
     resetPluginRuntimeStateForTest();
+    for (const dir of tempDirs.splice(0)) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("persists thinkingLevel=off (does not clear)", async () => {
@@ -305,6 +324,72 @@ describe("gateway sessions patch", () => {
     expect(entry.responseUsage).toBe("tokens");
     expect(entry.parentSessionKey).toBe("agent:main:main");
     expect(entry.fastMode).toBe(true);
+  });
+
+  test("projects patches without mutating the source entry", async () => {
+    const sourceEntry = {
+      sessionId: "source-session",
+      updatedAt: 1,
+      fastMode: false,
+    } as SessionEntry;
+    const entry = expectPatchOk(
+      await applySessionsPatchProjection({
+        cfg: EMPTY_CFG,
+        entry: sourceEntry,
+        entries: [{ sessionKey: MAIN_SESSION_KEY, entry: sourceEntry }],
+        storeKey: MAIN_SESSION_KEY,
+        patch: { key: MAIN_SESSION_KEY, fastMode: true },
+      }),
+    );
+
+    expect(entry.fastMode).toBe(true);
+    expect(sourceEntry.fastMode).toBe(false);
+  });
+
+  test("applies gateway patches through the file-backed projection seam", async () => {
+    const storePath = await createTempStorePath({
+      [MAIN_SESSION_KEY]: {
+        sessionId: "main-session",
+        updatedAt: 1,
+        fastMode: false,
+      } as SessionEntry,
+    });
+
+    const entry = expectPatchOk(
+      await patchGatewaySessionEntry({
+        cfg: EMPTY_CFG,
+        storePath,
+        key: MAIN_SESSION_KEY,
+        patch: { key: MAIN_SESSION_KEY, fastMode: true },
+      }),
+    );
+    const persisted = JSON.parse(await fs.readFile(storePath, "utf8")) as Record<
+      string,
+      SessionEntry
+    >;
+
+    expect(entry.fastMode).toBe(true);
+    expect(persisted[MAIN_SESSION_KEY]?.fastMode).toBe(true);
+  });
+
+  test("rejects duplicate labels through the gateway patch seam", async () => {
+    const storePath = await createTempStorePath({
+      [MAIN_SESSION_KEY]: { sessionId: "main-session", updatedAt: 1 } as SessionEntry,
+      "agent:main:other": {
+        sessionId: "other-session",
+        updatedAt: 1,
+        label: "taken",
+      } as SessionEntry,
+    });
+
+    const result = await patchGatewaySessionEntry({
+      cfg: EMPTY_CFG,
+      storePath,
+      key: MAIN_SESSION_KEY,
+      patch: { key: MAIN_SESSION_KEY, label: "taken" },
+    });
+
+    expectPatchError(result, "label already in use: taken");
   });
 
   test("clears fastMode when patch sets null", async () => {

@@ -115,7 +115,7 @@ import {
   type SessionsPreviewEntry,
   type SessionsPreviewResult,
 } from "../session-utils.js";
-import { applySessionsPatchToStore } from "../sessions-patch.js";
+import { applySessionsPatchToStore, patchGatewaySessionEntry } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
 import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
 import { chatHandlers } from "./chat.js";
@@ -2204,21 +2204,13 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const { target, storePath } = resolveGatewaySessionTargetFromKey(key, cfg, {
       agentId: requestedAgentId,
     });
-    const applied = await updateSessionStore(storePath, async (store) => {
-      const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
-        cfg,
-        key,
-        store,
-        agentId: requestedAgentId,
-      });
-      return await applySessionsPatchToStore({
-        cfg,
-        store,
-        storeKey: primaryKey,
-        agentId: requestedAgentId,
-        patch: p,
-        loadGatewayModelCatalog: context.loadGatewayModelCatalog,
-      });
+    const applied = await patchGatewaySessionEntry({
+      cfg,
+      storePath,
+      key,
+      agentId: requestedAgentId,
+      patch: p,
+      loadGatewayModelCatalog: context.loadGatewayModelCatalog,
     });
     if (!applied.ok) {
       respond(false, undefined, applied.error);
