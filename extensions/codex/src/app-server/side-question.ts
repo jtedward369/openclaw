@@ -27,6 +27,7 @@ import {
   readCodexPluginConfig,
   resolveOpenClawExecPolicyForCodexAppServer,
   resolveCodexAppServerRuntimeOptions,
+  resolveCodexModelBackedReviewerPolicyContext,
   shouldAutoApproveCodexAppServerApprovals,
   type CodexAppServerRuntimeOptions,
 } from "./config.js";
@@ -70,7 +71,7 @@ import {
 import { rememberCodexRateLimits, readRecentCodexRateLimits } from "./rate-limit-cache.js";
 import { formatCodexUsageLimitErrorMessage } from "./rate-limits.js";
 import { resolveCodexNativeExecutionBlock } from "./sandbox-guard.js";
-import { readCodexAppServerBinding } from "./session-binding.js";
+import { isCodexAppServerNativeAuthProfile, readCodexAppServerBinding } from "./session-binding.js";
 import {
   getLeasedSharedCodexAppServerClient,
   releaseLeasedSharedCodexAppServerClient,
@@ -168,11 +169,22 @@ export async function runCodexAppServerSideQuestion(
     agentDir: params.agentDir,
     config: params.cfg,
   });
+  const reviewerPolicyContext = resolveCodexModelBackedReviewerPolicyContext({
+    provider: params.provider,
+    model: params.model,
+    bindingModelProvider: binding.modelProvider,
+    bindingModel: binding.model,
+    nativeAuthProfile: isCodexAppServerNativeAuthProfile({
+      authProfileId,
+      agentDir: params.agentDir,
+      config: params.cfg,
+    }),
+  });
   const appServer = resolveCodexAppServerRuntimeOptions({
     pluginConfig,
     execPolicy,
-    modelProvider: modelProvider ?? params.provider,
-    model: params.model,
+    modelProvider: reviewerPolicyContext.modelProvider,
+    model: reviewerPolicyContext.model,
   });
   const client = await getLeasedSharedCodexAppServerClient({
     startOptions: appServer.start,
@@ -203,12 +215,12 @@ export async function runCodexAppServerSideQuestion(
     const sideRunParams = buildSideRunAttemptParams(params, { cwd, authProfileId });
     const modelScopedAppServer = resolveCodexAppServerForModelProvider({
       appServer,
-      provider: modelProvider ?? params.provider,
-      model: params.model,
+      provider: reviewerPolicyContext.modelProvider,
+      model: reviewerPolicyContext.model,
     });
     const useModelScopedPolicy = !canUseCodexModelBackedApprovalsReviewerForModel({
-      modelProvider: modelProvider ?? params.provider,
-      model: params.model,
+      modelProvider: reviewerPolicyContext.modelProvider,
+      model: reviewerPolicyContext.model,
     });
     const approvalPolicy = useModelScopedPolicy
       ? modelScopedAppServer.approvalPolicy

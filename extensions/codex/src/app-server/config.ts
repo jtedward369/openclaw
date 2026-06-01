@@ -142,7 +142,7 @@ export type CodexAppServerRuntimeOptions = {
   serviceTier?: CodexServiceTier;
 };
 
-type CodexModelBackedReviewerContext = {
+export type CodexModelBackedReviewerContext = {
   modelProvider?: string;
   model?: string;
 };
@@ -445,17 +445,24 @@ export function resolveCodexAppServerRuntimeOptions(
     modelProvider: params.modelProvider,
     model: params.model,
   });
-  const forceUserReviewer =
+  const explicitModelBackedReviewer =
+    explicitApprovalsReviewer === "auto_review" ||
+    explicitApprovalsReviewer === "guardian_subagent";
+  const forceUserReviewerForUnknownModel =
+    !canUseModelBackedReviewer &&
+    (explicitModelBackedReviewer || explicitPolicyMode === "guardian");
+  const forceUserReviewerForExecMode =
     execMode !== undefined &&
     execMode !== "full" &&
     (execMode !== "auto" || !canUseModelBackedReviewer);
+  const forceUserReviewer = forceUserReviewerForUnknownModel || forceUserReviewerForExecMode;
   const forceGuardianReviewer = execMode === "auto" && canUseModelBackedReviewer;
   const forceDangerFullAccessSandbox =
     params.execPolicy?.touched === true &&
     params.execPolicy.security === "full" &&
     params.execPolicy.ask === "always";
   const forceRuntimePolicy =
-    forceUserReviewer || forceGuardianReviewer || forceDangerFullAccessSandbox;
+    forceUserReviewerForExecMode || forceGuardianReviewer || forceDangerFullAccessSandbox;
   const defaultPolicy =
     explicitPolicyMode && !forceRuntimePolicy && !ignoreLegacyYoloPolicyMode
       ? undefined
@@ -463,7 +470,7 @@ export function resolveCodexAppServerRuntimeOptions(
           transport,
           env,
           forceGuardian: normalizedPolicyMode === "guardian",
-          forceUserReviewer,
+          forceUserReviewer: forceUserReviewer || !canUseModelBackedReviewer,
           execModeRequiringPromptingApprovals:
             execMode === "auto" || execMode === "ask" ? execMode : undefined,
           requirementsToml: params.requirementsToml,
@@ -493,6 +500,10 @@ export function resolveCodexAppServerRuntimeOptions(
           defaultPolicy?.approvalsReviewer ?? (forceUserReviewer ? "user" : "auto_review"),
       }
     : undefined;
+  const forcedApprovalsReviewer =
+    forceUserReviewer && !forceRuntimePolicy
+      ? (defaultPolicy?.approvalsReviewer ?? "user")
+      : undefined;
   const policyMode = ignoreLegacyYoloPolicyMode
     ? normalizedPolicyMode
     : (explicitPolicyMode ?? normalizedPolicyMode ?? defaultPolicy?.mode ?? "yolo");
@@ -551,6 +562,7 @@ export function resolveCodexAppServerRuntimeOptions(
       defaultPolicy?.sandbox ??
       (policyMode === "guardian" ? "workspace-write" : "danger-full-access"),
     approvalsReviewer:
+      forcedApprovalsReviewer ??
       forcedPolicy?.approvalsReviewer ??
       explicitApprovalsReviewer ??
       defaultPolicy?.approvalsReviewer ??
@@ -580,10 +592,46 @@ export function isCodexAppServerApprovalPolicyAllowedByRequirements(
 export function canUseCodexModelBackedApprovalsReviewerForModel(
   params: CodexModelBackedReviewerContext,
 ): boolean {
-  return (
-    isCodexModelBackedApprovalsReviewerProvider(params.modelProvider) &&
-    isCodexModelBackedApprovalsReviewerProvider(inferProviderFromModelRef(params.model))
-  );
+  const explicitProvider = params.modelProvider?.trim().toLowerCase();
+  const inferredProvider = inferProviderFromModelRef(params.model);
+  if (explicitProvider && explicitProvider !== "codex") {
+    return (
+      isCodexModelBackedApprovalsReviewerProvider(explicitProvider) &&
+      (inferredProvider === undefined ||
+        isCodexModelBackedApprovalsReviewerProvider(inferredProvider))
+    );
+  }
+  if (inferredProvider !== undefined) {
+    return isCodexModelBackedApprovalsReviewerProvider(inferredProvider);
+  }
+  return isCodexModelBackedApprovalsReviewerProvider(explicitProvider);
+}
+
+export function resolveCodexModelBackedReviewerPolicyContext(params: {
+  provider?: string;
+  model?: string;
+  bindingModelProvider?: string;
+  bindingModel?: string;
+  nativeAuthProfile?: boolean;
+}): CodexModelBackedReviewerContext {
+  const provider = params.provider?.trim();
+  if (provider && provider.toLowerCase() !== "codex") {
+    return {
+      modelProvider: normalizeCodexModelBackedReviewerPolicyProvider(provider),
+      model: params.model,
+    };
+  }
+  const bindingModelProvider = params.bindingModelProvider?.trim();
+  if (bindingModelProvider) {
+    return {
+      modelProvider: normalizeCodexModelBackedReviewerPolicyProvider(bindingModelProvider),
+      model: params.model ?? params.bindingModel,
+    };
+  }
+  return {
+    modelProvider: params.nativeAuthProfile === true ? "openai" : undefined,
+    model: params.model ?? params.bindingModel,
+  };
 }
 
 export function resolveCodexComputerUseConfig(
@@ -1096,7 +1144,11 @@ function selectUserApprovalsReviewer(
 
 function isCodexModelBackedApprovalsReviewerProvider(provider: string | undefined): boolean {
   const normalized = provider?.trim().toLowerCase();
-  return !normalized || normalized === "codex" || normalized === "openai";
+  return normalized === "openai";
+}
+
+function normalizeCodexModelBackedReviewerPolicyProvider(provider: string): string {
+  return provider.toLowerCase() === "openai" ? "openai" : provider;
 }
 
 function inferProviderFromModelRef(model: string | undefined): string | undefined {

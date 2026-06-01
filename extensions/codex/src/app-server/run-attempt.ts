@@ -126,6 +126,7 @@ import {
   readCodexPluginConfig,
   resolveCodexComputerUseConfig,
   resolveCodexAppServerRuntimeOptions,
+  resolveCodexModelBackedReviewerPolicyContext,
   resolveOpenClawExecPolicyForCodexAppServer,
   shouldAutoApproveCodexAppServerApprovals,
   type CodexAppServerRuntimeOptions,
@@ -212,6 +213,7 @@ import { releaseCodexSandboxExecServerEnvironment } from "./sandbox-exec-server.
 import {
   clearCodexAppServerBinding,
   clearCodexAppServerBindingForThread,
+  isCodexAppServerNativeAuthProfile,
   readCodexAppServerBinding,
   writeCodexAppServerBinding,
   type CodexAppServerThreadBinding,
@@ -389,11 +391,52 @@ export async function runCodexAppServerAttempt(
     config: params.config,
     agentId: sessionAgentId,
   });
+  const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, sessionAgentId);
+  preDynamicStartupStages.mark("session-agent");
+  const activeContextEngine = isActiveHarnessContextEngine(params.contextEngine)
+    ? params.contextEngine
+    : undefined;
+  const isInactiveThreadBootstrapBinding = (binding: CodexAppServerThreadBinding | undefined) =>
+    !activeContextEngine && binding?.contextEngine?.projection?.mode === "thread_bootstrap";
+  let startupBinding = await readCodexAppServerBinding(params.sessionFile);
+  preDynamicStartupStages.mark("read-binding");
+  const startupBindingAuthProfileId = startupBinding?.authProfileId;
+  const initialStartupBindingHadInactiveThreadBootstrap =
+    isInactiveThreadBootstrapBinding(startupBinding);
+  const startupAuthProfileCandidate =
+    params.runtimePlan?.auth.forwardedAuthProfileId ??
+    params.authProfileId ??
+    startupBinding?.authProfileId ??
+    startupBindingAuthProfileId;
+  const startupAuthProfileId = params.authProfileStore
+    ? resolveCodexAppServerAuthProfileId({
+        authProfileId: startupAuthProfileCandidate,
+        store: params.authProfileStore,
+        config: params.config,
+      })
+    : resolveCodexAppServerAuthProfileIdForAgent({
+        authProfileId: startupAuthProfileCandidate,
+        agentDir,
+        config: params.config,
+      });
+  const reviewerPolicyContext = resolveCodexModelBackedReviewerPolicyContext({
+    provider: params.provider,
+    model: params.modelId,
+    bindingModelProvider: startupBinding?.modelProvider,
+    bindingModel: startupBinding?.model,
+    nativeAuthProfile: isCodexAppServerNativeAuthProfile({
+      authProfileId: startupAuthProfileId,
+      authProfileStore: params.authProfileStore,
+      agentDir,
+      config: params.config,
+    }),
+  });
+  preDynamicStartupStages.mark("auth-profile");
   const configuredAppServer = resolveCodexAppServerRuntimeOptions({
     pluginConfig,
     execPolicy,
-    modelProvider: params.provider,
-    model: params.modelId,
+    modelProvider: reviewerPolicyContext.modelProvider,
+    model: reviewerPolicyContext.model,
     openClawSandboxActive: sandbox?.enabled === true,
   });
   const effectiveWorkspace = sandbox?.enabled
@@ -424,8 +467,8 @@ export async function runCodexAppServerAttempt(
   });
   const appServer = resolveCodexAppServerForModelProvider({
     appServer: policyAppServer,
-    provider: params.provider,
-    model: params.modelId,
+    provider: reviewerPolicyContext.modelProvider,
+    model: reviewerPolicyContext.model,
   });
   if (configuredAppServer.approvalPolicy === "never" && appServer.approvalPolicy === "untrusted") {
     embeddedAgentLog.info("codex app-server approval policy promoted for OpenClaw tool policy", {
@@ -453,18 +496,6 @@ export async function runCodexAppServerAttempt(
     params.abortSignal?.addEventListener("abort", abortFromUpstream, { once: true });
   }
 
-  const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, sessionAgentId);
-  preDynamicStartupStages.mark("session-agent");
-  const activeContextEngine = isActiveHarnessContextEngine(params.contextEngine)
-    ? params.contextEngine
-    : undefined;
-  const isInactiveThreadBootstrapBinding = (binding: CodexAppServerThreadBinding | undefined) =>
-    !activeContextEngine && binding?.contextEngine?.projection?.mode === "thread_bootstrap";
-  let startupBinding = await readCodexAppServerBinding(params.sessionFile);
-  preDynamicStartupStages.mark("read-binding");
-  const startupBindingAuthProfileId = startupBinding?.authProfileId;
-  const initialStartupBindingHadInactiveThreadBootstrap =
-    isInactiveThreadBootstrapBinding(startupBinding);
   startupBinding = await rotateOversizedCodexAppServerStartupBinding({
     binding: startupBinding,
     sessionFile: params.sessionFile,
@@ -476,23 +507,6 @@ export async function runCodexAppServerAttempt(
   const initialInactiveThreadBootstrapBindingForcedFreshStart =
     initialStartupBindingHadInactiveThreadBootstrap && !startupBinding?.threadId;
   preDynamicStartupStages.mark("rotate-binding");
-  const startupAuthProfileCandidate =
-    params.runtimePlan?.auth.forwardedAuthProfileId ??
-    params.authProfileId ??
-    startupBinding?.authProfileId ??
-    startupBindingAuthProfileId;
-  const startupAuthProfileId = params.authProfileStore
-    ? resolveCodexAppServerAuthProfileId({
-        authProfileId: startupAuthProfileCandidate,
-        store: params.authProfileStore,
-        config: params.config,
-      })
-    : resolveCodexAppServerAuthProfileIdForAgent({
-        authProfileId: startupAuthProfileCandidate,
-        agentDir,
-        config: params.config,
-      });
-  preDynamicStartupStages.mark("auth-profile");
   const runtimeParams = {
     ...params,
     sessionKey: contextSessionKey,

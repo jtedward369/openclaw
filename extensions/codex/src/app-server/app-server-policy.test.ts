@@ -70,19 +70,28 @@ describe("Codex app-server policy", () => {
     expect(explicitRequirements.approvalPolicy).toBe("never");
   });
 
-  it("keeps model-backed reviewers for Codex-native and OpenAI model providers", () => {
+  it("keeps model-backed reviewers for explicit OpenAI model providers", () => {
     const appServer = resolveCodexAppServerRuntimeOptions({
       env: {},
       requirementsToml: null,
       execMode: "auto",
+      modelProvider: "openai",
     });
 
-    expect(resolveCodexAppServerForModelProvider({ appServer }).approvalsReviewer).toBe(
-      "auto_review",
-    );
     expect(
-      resolveCodexAppServerForModelProvider({ appServer, provider: "codex" }).approvalsReviewer,
+      resolveCodexAppServerForModelProvider({
+        appServer,
+        provider: "codex",
+        model: "openai/gpt-5.5",
+      }).approvalsReviewer,
     ).toBe("auto_review");
+    expect(
+      resolveCodexAppServerForModelProvider({
+        appServer,
+        provider: "codex",
+        model: "gpt-5.5",
+      }).approvalsReviewer,
+    ).toBe("user");
     expect(
       resolveCodexAppServerForModelProvider({ appServer, provider: "openai" }).approvalsReviewer,
     ).toBe("auto_review");
@@ -93,17 +102,24 @@ describe("Codex app-server policy", () => {
       env: {},
       requirementsToml: null,
       execMode: "auto",
+      modelProvider: "openai",
     });
 
     const resolved = resolveCodexAppServerForModelProvider({
       appServer,
       provider: "lmstudio",
     });
+    const vendorPrefixedModel = resolveCodexAppServerForModelProvider({
+      appServer,
+      provider: "openrouter",
+      model: "openai/gpt-5.5",
+    });
 
     expect(appServer.approvalsReviewer).toBe("auto_review");
     expect(resolved.approvalPolicy).toBe("on-request");
     expect(resolved.sandbox).toBe("workspace-write");
     expect(resolved.approvalsReviewer).toBe("user");
+    expect(vendorPrefixedModel.approvalsReviewer).toBe("user");
   });
 
   it("infers custom providers from provider-qualified model refs", () => {
