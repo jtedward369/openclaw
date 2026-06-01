@@ -139,11 +139,13 @@ async function loadPackagedBundledEntries() {
       if (!id || !pluginDir || !pathReferencesPackagedBundledRoot(pluginDir)) {
         return null;
       }
+      const requirements = pluginConfigRequirements(pluginDir);
       return {
         id,
         dir: path.basename(pluginDir),
+        installRequiresConfig: requirements.installRequiresConfig,
+        runtimeRequiresConfig: requirements.runtimeRequiresConfig,
         rootDir: pluginDir,
-        ...pluginConfigRequirements(pluginDir),
       };
     })
     .filter(Boolean)
