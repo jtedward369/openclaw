@@ -132,9 +132,13 @@ function readCanonicalOrLegacy(
  * optional default while honoring the channel's top/nested storage mode.
  */
 export function resolveChannelDmPolicy(params: {
+  /** Account-level config wins over parent channel config. */
   account?: DmAccessRecord | null;
+  /** Parent channel config used when the account does not override policy. */
   parent?: DmAccessRecord | null;
+  /** Storage layout used by the owning channel plugin. */
   mode?: ChannelDmAllowFromMode;
+  /** Fallback policy when neither account nor parent config declares one. */
   defaultPolicy?: string;
 }): ChannelDmPolicy | undefined {
   const mode = params.mode ?? "topOnly";
@@ -150,8 +154,11 @@ export function resolveChannelDmPolicy(params: {
  * both canonical and legacy storage paths for the selected mode.
  */
 export function resolveChannelDmAllowFrom(params: {
+  /** Account-level config wins over parent channel config. */
   account?: DmAccessRecord | null;
+  /** Parent channel config used when the account does not override allowlist. */
   parent?: DmAccessRecord | null;
+  /** Storage layout used by the owning channel plugin. */
   mode?: ChannelDmAllowFromMode;
 }): Array<string | number> | undefined {
   const mode = params.mode ?? "topOnly";
@@ -163,9 +170,13 @@ export function resolveChannelDmAllowFrom(params: {
 
 /** Resolves DM policy and allowlist together for runtime authorization. */
 export function resolveChannelDmAccess(params: {
+  /** Account-level config wins over parent channel config. */
   account?: DmAccessRecord | null;
+  /** Parent channel config used when the account omits DM access fields. */
   parent?: DmAccessRecord | null;
+  /** Storage layout used by the owning channel plugin. */
   mode?: ChannelDmAllowFromMode;
+  /** Fallback policy when neither account nor parent config declares one. */
   defaultPolicy?: string;
 }): ChannelDmAccess {
   return {
@@ -283,9 +294,13 @@ function hasWildcard(list?: Array<string | number>) {
 }
 
 export function ensureOpenDmPolicyAllowFromWildcard(params: {
+  /** Mutable channel/account config entry to normalize in place. */
   entry: DmAccessRecord;
+  /** Storage layout used by the owning channel plugin. */
   mode: ChannelDmAllowFromMode;
+  /** Human-readable config path prefix for doctor/setup change notes. */
   pathPrefix: string;
+  /** Accumulates user-facing migration notes. */
   changes: string[];
 }): void {
   const policy = resolveChannelDmPolicy({
