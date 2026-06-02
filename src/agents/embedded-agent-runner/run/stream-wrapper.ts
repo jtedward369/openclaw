@@ -1,6 +1,7 @@
 import type { MutableAssistantMessageEventStream } from "../../stream-compat.js";
 import { createStreamIteratorWrapper } from "../../stream-iterator-wrapper.js";
 
+/** Wraps stream iteration so each object event can be observed without replacing the stream. */
 export function wrapStreamObjectEvents(
   stream: MutableAssistantMessageEventStream,
   onEvent: (event: Record<string, unknown>) => void | Promise<void>,

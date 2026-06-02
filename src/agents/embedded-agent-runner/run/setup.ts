@@ -39,6 +39,7 @@ type HookRunnerLike = {
   ): Promise<PluginHookBeforeAgentStartResult | undefined>;
 };
 
+/** Resolves hook-driven provider/model overrides before runtime model lookup. */
 export async function resolveHookModelSelection(params: {
   prompt: string;
   attachments?: PluginHookBeforeModelResolveAttachment[];
@@ -103,6 +104,7 @@ export async function resolveHookModelSelection(params: {
   };
 }
 
+/** Projects detected image attachments into before_model_resolve hook metadata. */
 export function buildBeforeModelResolveAttachments(
   images: readonly { mimeType?: string }[] | undefined,
 ): PluginHookBeforeModelResolveAttachment[] | undefined {
@@ -115,6 +117,7 @@ export function buildBeforeModelResolveAttachments(
   }));
 }
 
+/** Applies context-window policy to the runtime model and returns the effective model. */
 export function resolveEffectiveRuntimeModel(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;

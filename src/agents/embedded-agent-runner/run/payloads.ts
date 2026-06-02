@@ -199,6 +199,7 @@ function resolveToolErrorWarningPolicy(params: {
   };
 }
 
+/** Builds user-facing reply payloads from assistant text, tool state, and run metadata. */
 export function buildEmbeddedRunPayloads(params: {
   assistantTexts: string[];
   toolMetas: ToolMetaEntry[];

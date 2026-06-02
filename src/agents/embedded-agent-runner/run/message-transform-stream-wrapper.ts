@@ -3,6 +3,7 @@ import type { AgentMessage } from "../../runtime/index.js";
 
 export type MessageTransform = (messages: AgentMessage[], model: unknown) => AgentMessage[];
 
+/** Applies a message transform immediately before invoking a stream function. */
 export function wrapStreamFnWithMessageTransform(
   streamFn: StreamFn,
   transform: MessageTransform,
@@ -15,6 +16,8 @@ export function wrapStreamFnWithMessageTransform(
 
     const nextMessages = transform(messages as AgentMessage[], model);
     if (nextMessages === messages) {
+      // Preserve object identity for callers that intentionally no-op the
+      // transform, avoiding an unnecessary context clone on hot stream paths.
       return streamFn(model, context, options);
     }
 
