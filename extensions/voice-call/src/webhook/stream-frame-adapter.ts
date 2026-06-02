@@ -1,23 +1,37 @@
 /** Normalized provider websocket frame consumed by the realtime voice handler. */
 export type StreamFrame =
+  /** First accepted carrier frame that binds a stream id to the provider call id. */
   | { kind: "start"; streamId: string; providerCallId: string }
   | {
+      /** Carrier media payload after basic shape/base64 validation. */
       kind: "media";
+      /** Base64 encoded 8 kHz mu-law audio payload passed through to the bridge. */
       payloadBase64: string;
+      /** Provider timestamp when present and parseable as an integer millisecond value. */
       timestampMs?: number;
+      /** Provider track label, such as inbound/outbound, when supplied by the carrier. */
       track?: string;
     }
+  /** Provider acknowledgement marker; used to know when buffered outbound audio finished. */
   | { kind: "mark"; name?: string }
+  /** Provider stream-end signal. */
   | { kind: "stop" }
+  /** Structured carrier-side stream failure. */
   | { kind: "error"; code?: string; title?: string; detail?: string }
+  /** Malformed, unsupported, or intentionally ignored provider frame. */
   | { kind: "ignored" };
 
 /** Translates provider websocket envelopes into normalized frames and outbound media controls. */
 export interface StreamFrameAdapter {
+  /** Provider id for logs and handler routing. */
   readonly providerName: "twilio" | "telnyx";
+  /** Parses one raw carrier websocket message without throwing on malformed provider input. */
   parseInbound(rawMessage: string): StreamFrame;
+  /** Serializes outbound audio using provider-required stream identifiers. */
   serializeMedia(payloadBase64: string): string;
+  /** Serializes the provider command that clears queued outbound audio. */
   serializeClear(): string;
+  /** Serializes an outbound marker so playback completion can be observed later. */
   serializeMark(name: string): string;
 }
 
