@@ -7,8 +7,11 @@ import type { RuntimeEnv } from "../../runtime.js";
 import { summarizeStringEntries } from "../../shared/string-sample.js";
 
 export type AllowlistUserResolutionLike = {
+  /** Original config token that the channel-specific resolver attempted to map. */
   input: string;
+  /** True only when the resolver positively identified the input. */
   resolved: boolean;
+  /** Stable channel/user id to store when resolution succeeded. */
   id?: string;
 };
 
@@ -49,6 +52,7 @@ export function buildAllowlistResolutionSummary<T extends AllowlistUserResolutio
   additions: string[];
 } {
   const resolvedMap = new Map(resolvedUsers.map((entry) => [entry.input, entry]));
+  // Missing ids are treated as unresolved even when a resolver marks the input as resolved.
   const resolvedOk = (entry: T) => Boolean(entry.resolved && entry.id);
   const formatResolved = opts?.formatResolved ?? ((entry: T) => `${entry.input}→${entry.id}`);
   const formatUnresolved = opts?.formatUnresolved ?? ((entry: T) => entry.input);
@@ -85,6 +89,7 @@ export function canonicalizeAllowlistWithResolvedIds<
     if (!trimmed) {
       continue;
     }
+    // `*` is a wildcard policy marker, not a user alias; never try to resolve it as an id.
     if (trimmed === "*") {
       canonicalized.push(trimmed);
       continue;
