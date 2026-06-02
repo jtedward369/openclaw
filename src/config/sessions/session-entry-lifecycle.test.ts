@@ -52,6 +52,88 @@ describe("session entry lifecycle seam", () => {
     ).toBeUndefined();
   });
 
+  it("preserves an existing raw row key while exposing normalized context", async () => {
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        GLOBAL: {
+          sessionId: "session-raw",
+          updatedAt: 10,
+        },
+      }),
+    );
+    let contextKey: string | undefined;
+
+    await patchSessionLifecycleEntry(
+      { sessionKey: "GLOBAL", storePath },
+      (entry, context) => {
+        contextKey = context.sessionKey;
+        entry.fastMode = true;
+        return entry;
+      },
+      { replaceEntry: true, skipMaintenance: true },
+    );
+
+    const store = loadSessionStore(storePath, { skipCache: true });
+    expect(contextKey).toBe("global");
+    expect(store.GLOBAL?.fastMode).toBe(true);
+    expect(store.global).toBeUndefined();
+  });
+
+  it("collapses legacy aliases when a usable canonical row exists", async () => {
+    fs.writeFileSync(
+      storePath,
+      JSON.stringify({
+        "agent:main:main": {
+          sessionId: "session-canonical",
+          updatedAt: 10,
+          fastMode: false,
+        },
+        "Agent:Main:Main": {
+          sessionId: "session-legacy",
+          updatedAt: 20,
+          fastMode: false,
+        },
+      }),
+    );
+
+    await patchSessionLifecycleEntry(
+      { sessionKey: "Agent:Main:Main", storePath },
+      (entry) => {
+        entry.fastMode = true;
+        return entry;
+      },
+      { replaceEntry: true, skipMaintenance: true },
+    );
+
+    const store = loadSessionStore(storePath, { skipCache: true });
+    expect(store["agent:main:main"]?.sessionId).toBe("session-legacy");
+    expect(store["agent:main:main"]?.fastMode).toBe(true);
+    expect(store["Agent:Main:Main"]).toBeUndefined();
+  });
+
+  it("preserves a fallback raw row key", async () => {
+    await patchSessionLifecycleEntry(
+      { sessionKey: "UNKNOWN", storePath },
+      (entry) => {
+        entry.fastMode = true;
+        return entry;
+      },
+      {
+        fallbackEntry: {
+          sessionId: "session-fallback",
+          updatedAt: 10,
+        },
+        replaceEntry: true,
+        skipMaintenance: true,
+      },
+    );
+
+    const store = loadSessionStore(storePath, { skipCache: true });
+    expect(store.UNKNOWN?.fastMode).toBe(true);
+    expect(store.unknown).toBeUndefined();
+  });
+
   it("patches multiple entries without exposing a mutable store", async () => {
     await upsertSessionEntry(
       { sessionKey: "agent:main:one", storePath },

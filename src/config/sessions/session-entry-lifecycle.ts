@@ -1,5 +1,6 @@
 import { getRuntimeConfig } from "../io.js";
 import { resolveStorePath } from "./paths.js";
+import { hasMismatchedCaseSensitiveDeliveryProof } from "./store-entry.js";
 import {
   archiveRemovedSessionTranscripts,
   loadSessionStore,
@@ -63,6 +64,11 @@ export async function patchSessionLifecycleEntry(
       if (!existing) {
         return { changed: false, entry: null };
       }
+      const storageKey = resolveLifecyclePatchStorageKey({
+        store,
+        resolved,
+        requestedKey: scope.sessionKey,
+      });
       const patch = await update(structuredClone(existing), {
         existingEntry: resolved.existing ? structuredClone(resolved.existing) : undefined,
         sessionKey: resolved.normalizedKey,
@@ -78,8 +84,11 @@ export async function patchSessionLifecycleEntry(
         : options.preserveActivity
           ? mergeSessionEntryPreserveActivity(existing, patch)
           : mergeSessionEntry(existing, patch);
-      store[resolved.normalizedKey] = next;
+      store[storageKey] = next;
       for (const legacyKey of resolved.legacyKeys) {
+        if (legacyKey === storageKey) {
+          continue;
+        }
         delete store[legacyKey];
       }
       return { changed: true, entry: next };
@@ -217,6 +226,35 @@ function collectReferencedSessionIds(store: Record<string, SessionEntry>): Set<s
       .map((entry) => entry?.sessionId)
       .filter((sessionId): sessionId is string => Boolean(sessionId)),
   );
+}
+
+// Preserve the concrete row key for behavior-neutral file-backed updates. Callers
+// still receive the normalized key in context for canonical decisions.
+function resolveLifecyclePatchStorageKey(params: {
+  store: Record<string, SessionEntry>;
+  requestedKey: string;
+  resolved: ReturnType<typeof resolveSessionStoreEntry>;
+}): string {
+  if (
+    params.resolved.existing &&
+    params.store[params.resolved.normalizedKey] === params.resolved.existing
+  ) {
+    return params.resolved.normalizedKey;
+  }
+  const canonicalEntry = params.store[params.resolved.normalizedKey];
+  if (
+    canonicalEntry &&
+    !hasMismatchedCaseSensitiveDeliveryProof(canonicalEntry, params.resolved.normalizedKey)
+  ) {
+    return params.resolved.normalizedKey;
+  }
+  const existingLegacyKey = params.resolved.legacyKeys.find(
+    (legacyKey) => params.store[legacyKey] === params.resolved.existing,
+  );
+  if (existingLegacyKey) {
+    return existingLegacyKey;
+  }
+  return params.requestedKey.trim() || params.resolved.normalizedKey;
 }
 
 function rememberRemovedSessionFile(
