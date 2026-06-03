@@ -96,7 +96,7 @@
   border-color: var(--workboard-control-border-hover);
 }
 
-.workboard .input:focus {
+.workboard .input:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong));
   outline: none;
   box-shadow:
@@ -1070,5 +1070,35 @@
 
   .workboard-card--openable:hover {
     transform: none;
+  }
+}
+
+/* Mobile: tighten scroll-snap and ensure columns fit viewport */
+@media (max-width: 768px) {
+  .workboard-board {
+    grid-auto-columns: minmax(min(260px, 82vw), 82vw);
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .workboard-column {
+    min-width: min(260px, 82vw);
+    scroll-snap-align: start;
+  }
+
+  .workboard-board--compact {
+    grid-auto-columns: minmax(min(240px, 82vw), 82vw);
+  }
+
+  .workboard-board--compact .workboard-column {
+    min-width: min(240px, 82vw);
+  }
+
+  .workboard-board--comfortable {
+    grid-auto-columns: minmax(min(280px, 82vw), 82vw);
+  }
+
+  .workboard-board--comfortable .workboard-column {
+    min-width: min(280px, 82vw);
   }
 }
