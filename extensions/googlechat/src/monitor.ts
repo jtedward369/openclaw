@@ -280,7 +280,7 @@ async function processMessageWithPipeline(params: {
     body: rawBody,
   });
 
-  const replyThreadName = isGroup ? message.thread?.name : undefined;
+  const replyThreadName = message.thread?.name;
   const ctxPayload = core.channel.inbound.buildContext({
     channel: "googlechat",
     accountId: route.accountId,

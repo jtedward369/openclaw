@@ -141,4 +141,40 @@ describe("Google Chat reply delivery", () => {
       attachments: [{ attachmentUploadToken: "upload-token", contentName: "reply.png" }],
     });
   });
+
+  it("does not reuse a prior payload thread for the next text delivery", async () => {
+    const core = createCore();
+    const runtime = createRuntime();
+    mocks.sendGoogleChatMessage.mockResolvedValue({ messageName: "spaces/AAA/messages/reply" });
+
+    await deliverGoogleChatReply({
+      payload: { text: "first", replyToId: "spaces/AAA/threads/root" },
+      account,
+      spaceId: "spaces/AAA",
+      runtime,
+      core,
+      config,
+    });
+    await deliverGoogleChatReply({
+      payload: { text: "second" },
+      account,
+      spaceId: "spaces/AAA",
+      runtime,
+      core,
+      config,
+    });
+
+    expect(mocks.sendGoogleChatMessage).toHaveBeenNthCalledWith(1, {
+      account,
+      space: "spaces/AAA",
+      text: "first",
+      thread: "spaces/AAA/threads/root",
+    });
+    expect(mocks.sendGoogleChatMessage).toHaveBeenNthCalledWith(2, {
+      account,
+      space: "spaces/AAA",
+      text: "second",
+      thread: undefined,
+    });
+  });
 });
