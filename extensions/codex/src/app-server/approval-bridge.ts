@@ -399,7 +399,7 @@ async function runInternalExecAutoReviewForApprovalRequest(params: {
     !canUseInternalExecAutoReviewReviewer(
       reviewerConfig,
       params.paramsForRun.config,
-      params.paramsForRun.env,
+      process.env,
     )
   ) {
     return undefined;

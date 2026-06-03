@@ -546,10 +546,7 @@ describe("Codex app-server approval bridge", () => {
 
   it("falls back to plugin approval when OpenAI reviewer uses a custom environment base URL", async () => {
     const params = createParams();
-    params.env = {
-      ...params.env,
-      OPENAI_BASE_URL: "http://127.0.0.1:11434/v1",
-    };
+    vi.stubEnv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1");
     params.config = {
       tools: {
         exec: {
