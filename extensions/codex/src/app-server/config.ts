@@ -502,7 +502,15 @@ export function resolveCodexAppServerRuntimeOptions(
     : undefined;
   const forcedApprovalsReviewer =
     forceUserReviewer && !forceRuntimePolicy
-      ? (defaultPolicy?.approvalsReviewer ?? "user")
+      ? selectForcedUserApprovalsReviewer({
+          env,
+          requirementsToml: params.requirementsToml,
+          requirementsPath: params.requirementsPath,
+          readRequirementsFile: params.readRequirementsFile,
+          platform: params.platform,
+          hostName: params.hostName,
+          execModeRequiringUserReviewer: execMode,
+        })
       : undefined;
   const policyMode = ignoreLegacyYoloPolicyMode
     ? normalizedPolicyMode
@@ -1154,6 +1162,24 @@ function selectUserApprovalsReviewer(
   }
   throw new Error(
     `tools.exec.mode=${execModeRequiringUserReviewer ?? "ask"} requires Codex app-server user approvals`,
+  );
+}
+
+function selectForcedUserApprovalsReviewer(params: {
+  env?: NodeJS.ProcessEnv;
+  requirementsToml?: string | null;
+  requirementsPath?: string;
+  readRequirementsFile?: (path: string) => string | undefined;
+  platform?: NodeJS.Platform;
+  hostName?: string;
+  execModeRequiringUserReviewer?: OpenClawExecMode;
+}): CodexAppServerApprovalsReviewer {
+  const content = readCodexRequirementsToml(params);
+  const allowedApprovalsReviewers =
+    content === undefined ? undefined : parseAllowedApprovalsReviewersFromCodexRequirements(content);
+  return selectUserApprovalsReviewer(
+    allowedApprovalsReviewers,
+    params.execModeRequiringUserReviewer,
   );
 }
 

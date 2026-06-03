@@ -544,6 +544,54 @@ describe("Codex app-server approval bridge", () => {
     ]);
   });
 
+  it("falls back to plugin approval when OpenAI reviewer uses a custom environment base URL", async () => {
+    const params = createParams();
+    params.env = {
+      ...params.env,
+      OPENAI_BASE_URL: "http://127.0.0.1:11434/v1",
+    };
+    params.config = {
+      tools: {
+        exec: {
+          mode: "auto",
+          reviewer: {
+            model: "openai/gpt-5.5-mini",
+          },
+        },
+      },
+    } as EmbeddedRunAttemptParams["config"];
+    mockReviewExecRequestWithConfiguredModel.mockResolvedValueOnce({
+      decision: "allow-once",
+      rationale: "custom env endpoint reviewer",
+      risk: "low",
+    });
+    mockCallGatewayTool
+      .mockResolvedValueOnce({ id: "plugin:approval-env-openai", status: "accepted" })
+      .mockResolvedValueOnce({ id: "plugin:approval-env-openai", decision: "allow-once" });
+
+    const result = await handleCodexAppServerApprovalRequest({
+      method: "item/commandExecution/requestApproval",
+      requestParams: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "cmd-auto-review-env-openai",
+        command: "node --version",
+      },
+      paramsForRun: params,
+      threadId: "thread-1",
+      turnId: "turn-1",
+      execPolicy: { mode: "auto" },
+      internalExecAutoReview: true,
+    });
+
+    expect(result).toEqual({ decision: "accept" });
+    expect(mockReviewExecRequestWithConfiguredModel).not.toHaveBeenCalled();
+    expect(mockCallGatewayTool.mock.calls.map(([method]) => method)).toEqual([
+      "plugin.approval.request",
+      "plugin.approval.waitDecision",
+    ]);
+  });
+
   it("keeps permission amendment command approvals on the plugin approval route", async () => {
     const params = createParams();
     params.config = {

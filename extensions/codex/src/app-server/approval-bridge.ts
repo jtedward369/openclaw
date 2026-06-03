@@ -395,7 +395,13 @@ async function runInternalExecAutoReviewForApprovalRequest(params: {
     return undefined;
   }
   const reviewerConfig = resolveExecReviewerConfig(params.paramsForRun, params.agentId);
-  if (!canUseInternalExecAutoReviewReviewer(reviewerConfig, params.paramsForRun.config)) {
+  if (
+    !canUseInternalExecAutoReviewReviewer(
+      reviewerConfig,
+      params.paramsForRun.config,
+      params.paramsForRun.env,
+    )
+  ) {
     return undefined;
   }
   const decision = await waitForInternalExecAutoReviewDecision({
@@ -506,6 +512,7 @@ function resolveExecReviewerConfig(
 function canUseInternalExecAutoReviewReviewer(
   reviewerConfig: Record<string, unknown> | undefined,
   config: EmbeddedRunAttemptParams["config"] | undefined,
+  env: NodeJS.ProcessEnv | undefined,
 ): boolean {
   const model = readExecReviewerModelRef(reviewerConfig);
   const slashIndex = model?.indexOf("/") ?? -1;
@@ -521,6 +528,7 @@ function canUseInternalExecAutoReviewReviewer(
   }
   return configuredOpenAIProviderIsTrustedForExecReview({
     config,
+    env,
     modelId: model.slice(slashIndex + 1).trim(),
   });
 }
@@ -570,8 +578,12 @@ function agentModelAliasMatches(
 
 function configuredOpenAIProviderIsTrustedForExecReview(params: {
   config: EmbeddedRunAttemptParams["config"] | undefined;
+  env: NodeJS.ProcessEnv | undefined;
   modelId: string;
 }): boolean {
+  if (!isNativeOpenAIBaseUrl(params.env?.OPENAI_BASE_URL ?? params.env?.OPENAI_API_BASE)) {
+    return false;
+  }
   const providers = readUnknownRecord(readUnknownRecord(params.config)?.models)?.providers;
   const openAIProvider = readUnknownRecord(readUnknownRecord(providers)?.openai);
   if (!openAIProvider) {

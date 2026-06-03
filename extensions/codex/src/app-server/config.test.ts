@@ -1140,6 +1140,17 @@ allowed_sandbox_modes = ["read-only", "workspace-write"]
     ).toThrow("tools.exec.mode=ask requires Codex app-server user approvals");
   });
 
+  it("fails closed when Guardian local-model fallback needs user approvals but requirements disallow them", () => {
+    expect(() =>
+      resolveRuntimeForTest({
+        pluginConfig: { appServer: { mode: "guardian" } },
+        modelProvider: "lmstudio",
+        model: "local-model",
+        requirementsToml: 'allowed_approvals_reviewers = ["auto_review"]\n',
+      }),
+    ).toThrow("tools.exec.mode=ask requires Codex app-server user approvals");
+  });
+
   it.each([
     { execMode: "auto", policies: ["never"] },
     { execMode: "auto", policies: ["on-failure"] },
