@@ -7,13 +7,13 @@ import {
   type MediaGenerationCatalogKind,
   type MediaGenerationCatalogProvider,
 } from "../../packages/media-generation-core/src/catalog.js";
+import { normalizeOptionalString } from "../../packages/normalization-core/src/string-coerce.js";
+import { uniqueValues } from "../../packages/normalization-core/src/string-normalization.js";
 import {
   synthesizeVoiceModelCatalogEntries,
   type VoiceModelCapabilities,
   type VoiceModelProvider,
 } from "../../packages/speech-core/voice-models.js";
-import { normalizeOptionalString } from "../../packages/normalization-core/src/string-coerce.js";
-import { uniqueValues } from "../../packages/normalization-core/src/string-normalization.js";
 import type { PluginDiagnostic } from "./manifest-types.js";
 import { projectProviderCatalogResultToUnifiedTextRows } from "./provider-catalog-unified-text.js";
 import type { PluginRecord, PluginRegistry } from "./registry-types.js";
@@ -62,11 +62,33 @@ export function createModelCatalogRegistrationHandlers(params: {
   registry: PluginRegistry;
   pushDiagnostic: (diagnostic: PluginDiagnostic) => void;
 }) {
-  const registerModelCatalogProvider = (
+  const normalizeModelCatalogProvider = (
     record: PluginRecord,
     provider: UnifiedModelCatalogProviderPlugin,
-  ) => {
-    const providerId = normalizeOptionalString(provider.provider) ?? "";
+  ): UnifiedModelCatalogProviderPlugin | null => {
+    let providerId: string;
+    let normalizedKinds: UnifiedModelCatalogProviderPlugin["kinds"];
+    let staticCatalog: UnifiedModelCatalogProviderPlugin["staticCatalog"];
+    let liveCatalog: UnifiedModelCatalogProviderPlugin["liveCatalog"];
+    try {
+      providerId = normalizeOptionalString(provider.provider) ?? "";
+      const kinds = provider.kinds;
+      if (!Array.isArray(kinds) || kinds.length === 0) {
+        normalizedKinds = [];
+      } else {
+        normalizedKinds = uniqueValues(kinds);
+      }
+      staticCatalog = provider.staticCatalog;
+      liveCatalog = provider.liveCatalog;
+    } catch {
+      params.pushDiagnostic({
+        level: "error",
+        pluginId: record.id,
+        source: record.source,
+        message: "model catalog provider registration metadata unreadable",
+      });
+      return null;
+    }
     if (!providerId) {
       params.pushDiagnostic({
         level: "error",
@@ -74,17 +96,34 @@ export function createModelCatalogRegistrationHandlers(params: {
         source: record.source,
         message: "model catalog provider registration missing provider",
       });
-      return;
+      return null;
     }
-    if (!provider.kinds || provider.kinds.length === 0) {
+    if (normalizedKinds.length === 0) {
       params.pushDiagnostic({
         level: "error",
         pluginId: record.id,
         source: record.source,
         message: `model catalog provider "${providerId}" registration missing kinds`,
       });
+      return null;
+    }
+    return {
+      provider: providerId,
+      kinds: normalizedKinds,
+      ...(staticCatalog ? { staticCatalog } : {}),
+      ...(liveCatalog ? { liveCatalog } : {}),
+    };
+  };
+
+  const registerModelCatalogProvider = (
+    record: PluginRecord,
+    provider: UnifiedModelCatalogProviderPlugin,
+  ) => {
+    const normalizedProvider = normalizeModelCatalogProvider(record, provider);
+    if (!normalizedProvider) {
       return;
     }
+    const providerId = normalizedProvider.provider;
     const existing = params.registry.modelCatalogProviders.find(
       (entry) => entry.provider.provider === providerId && entry.pluginId !== record.id,
     );
@@ -97,7 +136,7 @@ export function createModelCatalogRegistrationHandlers(params: {
       });
       return;
     }
-    const normalizedKinds = uniqueValues(provider.kinds);
+    const normalizedKinds = normalizedProvider.kinds;
     const samePluginOverlapping = params.registry.modelCatalogProviders.find(
       (entry) =>
         entry.provider.provider === providerId &&
@@ -107,18 +146,18 @@ export function createModelCatalogRegistrationHandlers(params: {
     if (samePluginOverlapping) {
       samePluginOverlapping.provider = {
         ...samePluginOverlapping.provider,
-        ...provider,
+        ...normalizedProvider,
         provider: providerId,
         kinds: uniqueValues([...samePluginOverlapping.provider.kinds, ...normalizedKinds]),
         staticCatalog: mergeModelCatalogHooks(
           "static",
           samePluginOverlapping.provider.staticCatalog,
-          provider.staticCatalog,
+          normalizedProvider.staticCatalog,
         ),
         liveCatalog: mergeModelCatalogHooks(
           "live",
           samePluginOverlapping.provider.liveCatalog,
-          provider.liveCatalog,
+          normalizedProvider.liveCatalog,
         ),
       };
       return;
@@ -127,7 +166,7 @@ export function createModelCatalogRegistrationHandlers(params: {
       pluginId: record.id,
       pluginName: record.name,
       provider: {
-        ...provider,
+        ...normalizedProvider,
         provider: providerId,
         kinds: normalizedKinds,
       },
@@ -140,28 +179,31 @@ export function createModelCatalogRegistrationHandlers(params: {
     record: PluginRecord;
     provider: ProviderPlugin;
   }) => {
-    if (!registration.provider.catalog && !registration.provider.staticCatalog) {
+    const providerId = registration.provider.id;
+    const staticCatalog = registration.provider.staticCatalog;
+    const liveCatalog = registration.provider.catalog;
+    if (!liveCatalog && !staticCatalog) {
       return;
     }
     registerModelCatalogProvider(registration.record, {
-      provider: registration.provider.id,
+      provider: providerId,
       kinds: ["text"],
-      ...(registration.provider.staticCatalog
+      ...(staticCatalog
         ? {
             staticCatalog: async (ctx: UnifiedModelCatalogProviderContext) =>
               projectProviderCatalogResultToUnifiedTextRows({
-                providerId: registration.provider.id,
-                result: await registration.provider.staticCatalog!.run(ctx),
+                providerId,
+                result: await staticCatalog.run(ctx),
                 source: "static",
               }),
           }
         : {}),
-      ...(registration.provider.catalog
+      ...(liveCatalog
         ? {
             liveCatalog: async (ctx: UnifiedModelCatalogProviderContext) =>
               projectProviderCatalogResultToUnifiedTextRows({
-                providerId: registration.provider.id,
-                result: await registration.provider.catalog!.run(ctx),
+                providerId,
+                result: await liveCatalog.run(ctx),
                 source: "live",
               }),
           }
