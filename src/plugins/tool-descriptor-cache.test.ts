@@ -1,5 +1,6 @@
 // Covers plugin tool descriptor cache lifecycle and invalidation.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AnyAgentTool } from "../agents/tools/common.js";
 
 const hoisted = vi.hoisted(() => ({
   resolveRuntimeConfigCacheKey: vi.fn((value: unknown) => {
@@ -17,6 +18,7 @@ vi.mock("../config/runtime-snapshot.js", () => ({
 
 import {
   buildPluginToolDescriptorCacheKey,
+  capturePluginToolDescriptor,
   createPluginToolDescriptorConfigCacheKeyMemo,
   resetPluginToolDescriptorCache,
 } from "./tool-descriptor-cache.js";
@@ -168,5 +170,94 @@ describe("plugin tool descriptor cache keys", () => {
     });
 
     expect(firstKey).toBe(secondKey);
+  });
+
+  it("captures plugin descriptors without rereading hostile optional metadata", () => {
+    const tool = Object.defineProperties(
+      {
+        execute: vi.fn(),
+        description: "Demo tool",
+        name: "demo_tool",
+        parameters: { type: "object" },
+      },
+      {
+        displaySummary: {
+          get() {
+            throw new Error("broken descriptor summary");
+          },
+        },
+        label: {
+          get() {
+            throw new Error("broken descriptor label");
+          },
+        },
+      },
+    ) as AnyAgentTool;
+
+    expect(
+      capturePluginToolDescriptor({
+        pluginId: "demo",
+        tool,
+        optional: true,
+      }),
+    ).toEqual({
+      optional: true,
+      descriptor: {
+        name: "demo_tool",
+        description: "Demo tool",
+        inputSchema: { type: "object" },
+        owner: { kind: "plugin", pluginId: "demo" },
+        executor: { kind: "plugin", pluginId: "demo", toolName: "demo_tool" },
+      },
+    });
+  });
+
+  it("skips plugin descriptor cache capture when required metadata is unreadable", () => {
+    const tool = Object.defineProperties(
+      {
+        execute: vi.fn(),
+        parameters: { type: "object" },
+      },
+      {
+        name: {
+          get() {
+            throw new Error("broken descriptor name");
+          },
+        },
+      },
+    ) as AnyAgentTool;
+
+    expect(
+      capturePluginToolDescriptor({
+        pluginId: "demo",
+        tool,
+        optional: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("skips plugin descriptor cache capture when required descriptions are unreadable", () => {
+    const tool = Object.defineProperties(
+      {
+        execute: vi.fn(),
+        name: "demo_tool",
+        parameters: { type: "object" },
+      },
+      {
+        description: {
+          get() {
+            throw new Error("broken descriptor description");
+          },
+        },
+      },
+    ) as AnyAgentTool;
+
+    expect(
+      capturePluginToolDescriptor({
+        pluginId: "demo",
+        tool,
+        optional: true,
+      }),
+    ).toBeUndefined();
   });
 });

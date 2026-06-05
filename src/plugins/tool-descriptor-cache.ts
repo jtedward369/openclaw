@@ -144,23 +144,50 @@ function asJsonObject(value: unknown): JsonObject {
   return value as JsonObject;
 }
 
+function readDescriptorToolProperty(tool: AnyAgentTool, key: string): unknown {
+  try {
+    return (tool as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function readDescriptorToolString(tool: AnyAgentTool, key: string): string | undefined {
+  const value = readDescriptorToolProperty(tool, key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function readDescriptorToolSchema(tool: AnyAgentTool): JsonObject | undefined {
+  const parameters = readDescriptorToolProperty(tool, "parameters");
+  return parameters && typeof parameters === "object" && !Array.isArray(parameters)
+    ? asJsonObject(parameters)
+    : undefined;
+}
+
 export function capturePluginToolDescriptor(params: {
   pluginId: string;
   tool: AnyAgentTool;
   optional: boolean;
-}): CachedPluginToolDescriptor {
-  const label = (params.tool as { label?: unknown }).label;
+}): CachedPluginToolDescriptor | undefined {
+  const name = readDescriptorToolString(params.tool, "name")?.trim();
+  const description = readDescriptorToolString(params.tool, "description");
+  const inputSchema = readDescriptorToolSchema(params.tool);
+  if (!name || description === undefined || !inputSchema) {
+    return undefined;
+  }
+  const label = readDescriptorToolString(params.tool, "label");
   const title = typeof label === "string" && label.trim() ? label.trim() : undefined;
+  const displaySummary = readDescriptorToolString(params.tool, "displaySummary");
   return {
-    ...(params.tool.displaySummary ? { displaySummary: params.tool.displaySummary } : {}),
+    ...(displaySummary ? { displaySummary } : {}),
     optional: params.optional,
     descriptor: {
-      name: params.tool.name,
+      name,
       ...(title ? { title } : {}),
-      description: params.tool.description,
-      inputSchema: asJsonObject(params.tool.parameters),
+      description,
+      inputSchema,
       owner: { kind: "plugin", pluginId: params.pluginId },
-      executor: { kind: "plugin", pluginId: params.pluginId, toolName: params.tool.name },
+      executor: { kind: "plugin", pluginId: params.pluginId, toolName: name },
     },
   };
 }
