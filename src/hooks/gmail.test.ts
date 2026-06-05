@@ -6,6 +6,8 @@ import {
   buildGogWatchPullLogArgs,
   buildGogWatchServeLogArgs,
   buildTopicPath,
+  isGmailHookPullRuntimeConfig,
+  isGmailHookPushRuntimeConfig,
   parseSubscriptionPath,
   parseTopicPath,
   resolveGmailHookRuntimeConfig,
@@ -51,7 +53,7 @@ describe("gmail hook config", () => {
       return;
     }
     expect(result.value.delivery.mode).toBe("push");
-    if (result.value.delivery.mode !== "push") {
+    if (!isGmailHookPushRuntimeConfig(result.value)) {
       return;
     }
     expect(result.value.serve.path).toBe(expected.servePath);
@@ -91,7 +93,7 @@ describe("gmail hook config", () => {
       expect(result.value.delivery.mode).toBe("push");
       expect(result.value.label).toBe("INBOX");
       expect(result.value.includeBody).toBe(true);
-      if (result.value.delivery.mode !== "push") {
+      if (!isGmailHookPushRuntimeConfig(result.value)) {
         return;
       }
       expect(result.value.serve.port).toBe(8788);
@@ -159,7 +161,7 @@ describe("gmail hook config", () => {
       return;
     }
     expect(result.value.delivery.mode).toBe("push");
-    if (result.value.delivery.mode !== "push") {
+    if (!isGmailHookPushRuntimeConfig(result.value)) {
       return;
     }
 
@@ -209,7 +211,7 @@ describe("gmail hook config", () => {
       return;
     }
     expect(result.value.delivery.mode).toBe("pull");
-    if (result.value.delivery.mode !== "pull") {
+    if (!isGmailHookPullRuntimeConfig(result.value)) {
       return;
     }
 

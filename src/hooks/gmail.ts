@@ -356,9 +356,9 @@ export function buildGogWatchPullHelpArgs(): string[] {
 
 function removeGogWatchSensitiveArgs(args: string[]): string[] {
   return args.filter(
-    (arg, index, args) =>
+    (arg, index, allArgs) =>
       !GMAIL_WATCH_SENSITIVE_FLAGS.has(arg) &&
-      !GMAIL_WATCH_SENSITIVE_FLAGS.has(args[index - 1] ?? ""),
+      !GMAIL_WATCH_SENSITIVE_FLAGS.has(allArgs[index - 1] ?? ""),
   );
 }
 
