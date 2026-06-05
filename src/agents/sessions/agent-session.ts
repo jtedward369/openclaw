@@ -105,6 +105,17 @@ function unwrapCoreResult<T>(result: { ok: true; value: T } | { ok: false; error
   throw result.error;
 }
 
+function describeSessionExtensionError(err: unknown): string {
+  try {
+    if (err instanceof Error) {
+      return err.message || err.name || "Unknown session extension error";
+    }
+    return String(err);
+  } catch {
+    return "Unknown session extension error";
+  }
+}
+
 function normalizeBranchSummaryResult(
   result:
     | { ok: true; value: CoreBranchSummaryResult }
@@ -1287,7 +1298,7 @@ export class AgentSession {
       this.currentExtensionRunner.emitError({
         extensionPath: `command:${commandName}`,
         event: "command",
-        error: err instanceof Error ? err.message : String(err),
+        error: describeSessionExtensionError(err),
       });
       return true;
     }
@@ -1322,7 +1333,7 @@ export class AgentSession {
       this.currentExtensionRunner.emitError({
         extensionPath: skill.filePath,
         event: "skill_expansion",
-        error: err instanceof Error ? err.message : String(err),
+        error: describeSessionExtensionError(err),
       });
       return text; // Return original on error
     }
@@ -2309,7 +2320,7 @@ export class AgentSession {
             runner.emitError({
               extensionPath: "<runtime>",
               event: "send_message",
-              error: err instanceof Error ? err.message : String(err),
+              error: describeSessionExtensionError(err),
             });
           });
         },
@@ -2318,7 +2329,7 @@ export class AgentSession {
             runner.emitError({
               extensionPath: "<runtime>",
               event: "send_user_message",
-              error: err instanceof Error ? err.message : String(err),
+              error: describeSessionExtensionError(err),
             });
           });
         },

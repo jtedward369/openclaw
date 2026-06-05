@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import type { Model } from "../../llm/types.js";
 import { AuthStorage } from "./auth-storage.js";
 import { createExtensionRuntime } from "./extensions/loader.js";
-import type { LoadExtensionsResult, ToolDefinition } from "./extensions/types.js";
+import type {
+  ExtensionError,
+  LoadExtensionsResult,
+  RegisteredCommand,
+  ToolDefinition,
+} from "./extensions/types.js";
 import { ModelRegistry } from "./model-registry.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { createAgentSession } from "./sdk.js";
@@ -32,10 +37,11 @@ function createEmptyResourceLoader(): ResourceLoader {
 
 function createResourceLoaderWithHandlers(
   handlers: Map<string, Array<(...args: unknown[]) => Promise<unknown>>>,
+  commands: Map<string, RegisteredCommand> = new Map(),
 ): ResourceLoader {
   const extensionsResult: LoadExtensionsResult = {
     extensions:
-      handlers.size > 0
+      handlers.size > 0 || commands.size > 0
         ? [
             {
               path: "<test-extension>",
@@ -44,7 +50,7 @@ function createResourceLoaderWithHandlers(
               handlers,
               tools: new Map(),
               messageRenderers: new Map(),
-              commands: new Map(),
+              commands,
               flags: new Map(),
               shortcuts: new Map(),
             },
@@ -277,6 +283,56 @@ describe("createAgentSession tool defaults", () => {
 
     expect(events).toEqual(["lock:start", "lock:end"]);
     expect(sessionManager.getEntries().some((entry) => entry.type === "message")).toBe(true);
+  });
+
+  it("reports hostile extension command errors without crashing prompt handling", async () => {
+    const hostileError = new Error("command failed");
+    Object.defineProperties(hostileError, {
+      message: {
+        get() {
+          throw new Error("message denied");
+        },
+      },
+      stack: {
+        get() {
+          throw new Error("stack denied");
+        },
+      },
+    });
+    const errors: ExtensionError[] = [];
+    const commands = new Map<string, RegisteredCommand>([
+      [
+        "explode",
+        {
+          name: "explode",
+          sourceInfo: createSyntheticSourceInfo("<test-extension>", { source: "temporary" }),
+          handler: async () => {
+            throw hostileError;
+          },
+        },
+      ],
+    ]);
+
+    const { session } = await createAgentSession({
+      model: testModel,
+      resourceLoader: createResourceLoaderWithHandlers(new Map(), commands),
+      sessionManager: SessionManager.inMemory(),
+      settingsManager: SettingsManager.inMemory(),
+      modelRegistry: ModelRegistry.inMemory(AuthStorage.inMemory()),
+    });
+    await session.bindExtensions({
+      onError: (error) => errors.push(error),
+    });
+
+    await session.prompt("/explode");
+
+    expect(errors).toEqual([
+      {
+        extensionPath: "command:explode",
+        event: "command",
+        error: "Unknown session extension error",
+      },
+    ]);
   });
 
   it("runs write-capable tool hooks under the configured write lock", async () => {
