@@ -762,6 +762,18 @@ describe("buildOpenAIProvider", () => {
     if (!wrap) {
       throw new Error("expected OpenAI wrapper");
     }
+    const unreadableTypeTool = {
+      get type(): string {
+        throw new Error("revoked type");
+      },
+      name: "broken_type",
+    };
+    const unreadableNameTool = {
+      type: "function",
+      get name(): string {
+        throw new Error("revoked name");
+      },
+    };
 
     const result = runWrappedPayloadCase({
       wrap,
@@ -775,7 +787,9 @@ describe("buildOpenAIProvider", () => {
       } as Model<"openai-responses">,
       payload: {
         tools: [
+          unreadableTypeTool,
           { type: "function", name: "read" },
+          unreadableNameTool,
           { type: "function", name: "web_search" },
         ],
       },

@@ -48,11 +48,48 @@ function shouldEnableOpenAINativeWebSearch(params: {
 }
 
 function isNativeWebSearchTool(tool: unknown): boolean {
-  return isRecord(tool) && tool.type === OPENAI_WEB_SEARCH_TOOL.type;
+  if (!isRecord(tool)) {
+    return false;
+  }
+  const type = readPayloadToolField(tool, "type");
+  return type.ok && type.value === OPENAI_WEB_SEARCH_TOOL.type;
 }
 
 function isManagedWebSearchTool(tool: unknown): boolean {
-  return isRecord(tool) && tool.type === "function" && tool.name === OPENAI_WEB_SEARCH_TOOL.type;
+  if (!isRecord(tool)) {
+    return false;
+  }
+  const type = readPayloadToolField(tool, "type");
+  if (!type.ok || type.value !== "function") {
+    return false;
+  }
+  const name = readPayloadToolField(tool, "name");
+  return name.ok && name.value === OPENAI_WEB_SEARCH_TOOL.type;
+}
+
+function isReadablePayloadTool(tool: unknown): boolean {
+  if (!isRecord(tool)) {
+    return true;
+  }
+  const type = readPayloadToolField(tool, "type");
+  if (!type.ok) {
+    return false;
+  }
+  if (type.value !== "function") {
+    return true;
+  }
+  return readPayloadToolField(tool, "name").ok;
+}
+
+function readPayloadToolField(
+  tool: Record<string, unknown>,
+  field: string,
+): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: tool[field] };
+  } catch {
+    return { ok: false };
+  }
 }
 
 function raiseMinimalReasoningForOpenAINativeWebSearch(payload: Record<string, unknown>): void {
@@ -71,7 +108,9 @@ export function patchOpenAINativeWebSearchPayload(
   }
 
   const existingTools = Array.isArray(payload.tools) ? payload.tools : [];
-  const filteredTools = existingTools.filter((tool) => !isManagedWebSearchTool(tool));
+  const filteredTools = existingTools.filter(
+    (tool) => isReadablePayloadTool(tool) && !isManagedWebSearchTool(tool),
+  );
   if (filteredTools.some(isNativeWebSearchTool)) {
     if (filteredTools.length !== existingTools.length) {
       payload.tools = filteredTools;
