@@ -688,22 +688,52 @@ Required env when `--credential-source env`:
 
 Optional:
 
-- `OPENCLAW_QA_WHATSAPP_GROUP_JID` enables `whatsapp-mention-gating`.
+- `OPENCLAW_QA_WHATSAPP_GROUP_JID` enables group scenarios such as
+  `whatsapp-mention-gating` and `whatsapp-group-allowlist-block`.
 - `OPENCLAW_QA_WHATSAPP_CAPTURE_CONTENT=1` keeps message bodies in
   observed-message artifacts.
 
-Scenarios (`extensions/qa-lab/src/live-transports/whatsapp/whatsapp-live.runtime.ts`):
+Scenario catalog (`extensions/qa-lab/src/live-transports/whatsapp/whatsapp-live.runtime.ts`):
 
-- `whatsapp-canary`
-- `whatsapp-pairing-block`
-- `whatsapp-mention-gating`
-- `whatsapp-approval-exec-native` - opt-in native WhatsApp exec approval
-  scenario. Requests an exec approval through the gateway, verifies the
-  WhatsApp message has native reaction approval affordances, resolves it, and
-  verifies the resolved WhatsApp follow-up.
-- `whatsapp-approval-plugin-native` - opt-in native WhatsApp plugin approval
-  scenario. Enables exec and plugin approval forwarding together, then verifies
-  the same pending/resolved native WhatsApp path.
+- Baseline and group gating: `whatsapp-canary`, `whatsapp-pairing-block`,
+  `whatsapp-mention-gating`, `whatsapp-top-level-reply-shape`,
+  `whatsapp-restart-resume`, `whatsapp-group-allowlist-block`.
+- Native commands: `whatsapp-help-command`, `whatsapp-status-command`,
+  `whatsapp-commands-command`, `whatsapp-tools-compact-command`,
+  `whatsapp-whoami-command`, `whatsapp-context-command`,
+  `whatsapp-native-new-command`.
+- Reply and final-output behavior: `whatsapp-tool-only-usage-footer`,
+  `whatsapp-reply-to-message`, `whatsapp-reply-context-isolation`,
+  `whatsapp-reply-delivery-shape`, `whatsapp-stream-final-message-accounting`.
+- Inbound media and structured messages: `whatsapp-inbound-image-caption`,
+  `whatsapp-audio-preflight`, `whatsapp-inbound-structured-messages`,
+  `whatsapp-group-audio-gating`. These send real WhatsApp image, audio,
+  document, location, contact, and sticker events through the driver.
+- Outbound Gateway and message action coverage:
+  `whatsapp-outbound-media-matrix`,
+  `whatsapp-outbound-document-preserves-filename`, `whatsapp-outbound-poll`,
+  `whatsapp-message-actions`.
+- Access-control coverage: `whatsapp-access-control-dm-open`,
+  `whatsapp-access-control-dm-disabled`, `whatsapp-access-control-group-open`,
+  `whatsapp-access-control-group-disabled`, `whatsapp-group-allowlist-block`.
+- Native approvals: `whatsapp-approval-exec-deny-native`,
+  `whatsapp-approval-exec-native`, `whatsapp-approval-exec-reaction-native`,
+  `whatsapp-approval-plugin-native`.
+- Status reactions: `whatsapp-status-reactions`.
+
+The catalog currently contains 35 scenarios. The `live-frontier` default lane is
+kept small at 8 scenarios for fast smoke coverage. The `mock-openai` default
+lane runs 29 deterministic scenarios through the real WhatsApp transport while
+mocking only model output. Approval scenarios and a few heavier/blocking checks
+remain explicit by scenario id.
+
+The WhatsApp QA driver observes structured live events (`text`, `media`,
+`reaction`, and `poll`) and can actively send media, polls, contacts, locations,
+and stickers. QA Lab imports that driver through the narrow
+`@openclaw/whatsapp/qa-driver-api.js` package surface instead of reaching into
+private WhatsApp runtime files. Message content is redacted by default. Outbound poll and
+upload-file coverage run through deterministic gateway `poll` and
+`message.action` calls instead of model-prompt-only tool invocation.
 
 Output artifacts:
 
