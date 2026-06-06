@@ -2,6 +2,12 @@
 
 Docs: https://docs.openclaw.ai
 
+## Unreleased
+
+### Changes
+
+- Alpha nightly candidate from current `origin/main`, including release validation, packaging, plugin, provider, channel, and CI fixes since 2026.6.2.
+
 ## 2026.6.2
 
 ### Highlights
