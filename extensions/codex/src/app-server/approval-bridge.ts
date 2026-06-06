@@ -482,6 +482,7 @@ async function buildAppServerExecAutoReviewInput(params: {
 function hasCommandApprovalCapabilityAmendments(requestParams: JsonObject | undefined): boolean {
   return (
     hasNonEmptyJsonObject(requestParams?.additionalPermissions) ||
+    hasNonEmptyJsonObject(requestParams?.networkApprovalContext) ||
     hasNonEmptyArray(requestParams?.proposedExecpolicyAmendment) ||
     hasNonEmptyArray(requestParams?.proposedNetworkPolicyAmendments) ||
     findAvailableCommandAmendmentDecision(requestParams) !== undefined ||
