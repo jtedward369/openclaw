@@ -84,10 +84,7 @@ function mockUrlFetchResponse(params: {
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response);
 }
 
-function mockFetchResponse(params: {
-  body: BodyInit | null;
-  init?: ResponseInit;
-}): Response {
+function mockFetchResponse(params: { body: BodyInit | null; init?: ResponseInit }): Response {
   const response = new Response(params.body, params.init);
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response);
   return response;
@@ -236,14 +233,12 @@ describe("HEIC input image normalization", () => {
 
 describe("fetchWithGuard", () => {
   it("uses native no-redirect fetch behavior when maxRedirects is zero", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(Buffer.from("input"), {
-          status: 200,
-          headers: { "content-type": "text/plain" },
-        }),
-      );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(Buffer.from("input"), {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    );
 
     await expect(
       fetchWithGuard({
@@ -262,6 +257,43 @@ describe("fetchWithGuard", () => {
       "https://example.com/file.txt",
       expect.objectContaining({ redirect: "error" }),
     );
+  });
+
+  it("rejects URL fetches outside the configured hostname allowlist before fetch", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("unexpected"));
+
+    await expect(
+      fetchWithGuard({
+        url: "https://evil.example.com/file.txt",
+        maxBytes: 1024,
+        timeoutMs: 1000,
+        maxRedirects: 3,
+        policy: { hostnameAllowlist: ["cdn.example.com", "*.assets.example.com"] },
+      }),
+    ).rejects.toThrow("hostname is not in allowlist");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects native redirect results outside the configured hostname allowlist", async () => {
+    const response = new Response(Buffer.from("input"), {
+      status: 200,
+      headers: { "content-type": "text/plain" },
+    });
+    Object.defineProperty(response, "url", {
+      value: "https://evil.example.com/file.txt",
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response);
+
+    await expect(
+      fetchWithGuard({
+        url: "https://cdn.example.com/file.txt",
+        maxBytes: 1024,
+        timeoutMs: 1000,
+        maxRedirects: 3,
+        policy: { hostnameAllowlist: ["cdn.example.com"] },
+      }),
+    ).rejects.toThrow("hostname is not in allowlist");
   });
 
   it("cancels ignored HTTP error bodies", async () => {

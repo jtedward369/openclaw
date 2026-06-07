@@ -8,7 +8,8 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { SsrFPolicy } from "../infra/net/ssrf.js";
+import { normalizeHostname } from "../infra/net/hostname.js";
+import { matchesHostnameAllowlist, type SsrFPolicy } from "../infra/net/ssrf.js";
 import { logWarn } from "../logger.js";
 import { convertHeicToJpeg } from "./media-services.js";
 import { extractPdfContent, type PdfExtractedImage } from "./pdf-extract.js";
@@ -145,6 +146,36 @@ function unrefTimer(timeout: ReturnType<typeof setTimeout>): void {
   }
 }
 
+function parseInputSourceUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("Input source URL must be a valid http or https URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Input source URL must use http or https");
+  }
+  return parsed;
+}
+
+function assertInputSourceUrlAllowed(rawUrl: string, policy?: SsrFPolicy): string {
+  const parsed = parseInputSourceUrl(rawUrl);
+  const allowlist = policy?.hostnameAllowlist;
+  if (allowlist?.length) {
+    const hostname = normalizeHostname(parsed.hostname);
+    if (
+      !matchesHostnameAllowlist(
+        hostname,
+        allowlist.map((entry) => normalizeHostname(entry)),
+      )
+    ) {
+      throw new Error(`Input source URL hostname is not in allowlist: ${parsed.hostname}`);
+    }
+  }
+  return parsed.toString();
+}
+
 function rejectOversizedBase64Payload(params: {
   data: string;
   maxBytes: number;
@@ -212,6 +243,7 @@ export async function fetchWithGuard(params: {
   policy?: SsrFPolicy;
   auditContext?: string;
 }): Promise<InputFetchResult> {
+  const url = assertInputSourceUrlAllowed(params.url, params.policy);
   const controller = new AbortController();
   const timeoutError = new Error(`Input source URL fetch timed out after ${params.timeoutMs}ms`);
   const timeout = setTimeout(() => {
@@ -220,7 +252,7 @@ export async function fetchWithGuard(params: {
   unrefTimer(timeout);
   let response: Response;
   try {
-    response = await fetch(params.url, {
+    response = await fetch(url, {
       headers: { "User-Agent": "OpenClaw-Gateway/1.0" },
       signal: controller.signal,
       redirect: params.maxRedirects === 0 ? "error" : "follow",
@@ -233,6 +265,12 @@ export async function fetchWithGuard(params: {
     await discardIgnoredResponseBody(response);
     throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
   }
+  try {
+    assertInputSourceUrlAllowed(response.url || url, params.policy);
+  } catch (err) {
+    await discardIgnoredResponseBody(response);
+    throw err;
+  }
 
   let contentLength: number | null;
   try {
@@ -243,9 +281,7 @@ export async function fetchWithGuard(params: {
   }
   if (contentLength !== null && contentLength > params.maxBytes) {
     await discardIgnoredResponseBody(response);
-    throw new Error(
-      `Content too large: ${contentLength} bytes (limit: ${params.maxBytes} bytes)`,
-    );
+    throw new Error(`Content too large: ${contentLength} bytes (limit: ${params.maxBytes} bytes)`);
   }
 
   const buffer = await readResponseWithLimit(response, params.maxBytes);
