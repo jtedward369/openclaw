@@ -154,6 +154,33 @@ describe("listSessionFilesForAgent listing cache", () => {
     expect(readdirSpy).toHaveBeenCalledTimes(2);
     expect(baseNames(afterInvalidate)).toEqual(["a.jsonl", "b.jsonl"]);
   });
+
+  it("does not cache a transient scan failure and retries on the next call", async () => {
+    writeSession("a.jsonl");
+    const transient = Object.assign(new Error("nfs blip"), { code: "EIO" });
+    const readdirSpy = vi.spyOn(fsPromises, "readdir").mockRejectedValueOnce(transient);
+
+    // A transient READDIR failure is surfaced to this caller as empty...
+    const failed = await listSessionFilesForAgent("main");
+    expect(failed).toEqual([]);
+    // ...but must not be cached: the next call within the TTL re-scans and
+    // recovers the real listing instead of serving the false-empty snapshot.
+    const recovered = await listSessionFilesForAgent("main");
+    expect(baseNames(recovered)).toEqual(["a.jsonl"]);
+    expect(readdirSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches an absent sessions dir as empty without re-scanning", async () => {
+    fsSync.rmSync(sessionsDir, { recursive: true, force: true });
+    const readdirSpy = vi.spyOn(fsPromises, "readdir");
+
+    const first = await listSessionFilesForAgent("main");
+    const second = await listSessionFilesForAgent("main");
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+    expect(readdirSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("sessionPathForFile", () => {

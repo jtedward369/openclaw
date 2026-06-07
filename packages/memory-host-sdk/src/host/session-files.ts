@@ -360,17 +360,54 @@ function pruneSessionFilesListing(): void {
   }
 }
 
-async function readSessionFilesForDir(dir: string): Promise<string[]> {
+// A successful scan (including a legitimately absent dir) yields a listing we
+// can cache; a transient failure must not be cached as an empty set, or one
+// NFS blip would hide real session files from sync/export for the whole TTL.
+type SessionFilesReadResult = { ok: true; files: string[] } | { ok: false };
+
+async function readSessionFilesForDir(dir: string): Promise<SessionFilesReadResult> {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    return entries
+    const files = entries
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
       .filter((name) => isUsageCountedSessionTranscriptFileName(name))
       .map((name) => path.join(dir, name));
-  } catch {
+    return { ok: true, files };
+  } catch (err) {
+    // A missing sessions dir is the normal "no sessions yet" state and is safe
+    // to cache as empty (the first session write emits an invalidation event).
+    // Any other readdir failure (transient NFS EIO/ESTALE/EACCES/timeout) is
+    // returned to this caller as empty but deliberately not cached.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return { ok: true, files: [] };
+    }
+    return { ok: false };
+  }
+}
+
+async function loadSessionFilesSnapshot(
+  dir: string,
+  entry: SessionFilesListingEntry,
+): Promise<string[]> {
+  const result = await readSessionFilesForDir(dir);
+  // Only act if this read is still the active entry; an invalidation or a newer
+  // read during the await must win.
+  const active = sessionFilesListingByDir.get(dir) === entry;
+  if (!result.ok) {
+    // Failed scan: never publish an empty snapshot. Drop the entry so the next
+    // caller retries instead of serving a false-empty listing for the TTL.
+    if (active) {
+      sessionFilesListingByDir.delete(dir);
+    }
     return [];
   }
+  if (active) {
+    entry.inFlight = undefined;
+    entry.value = result.files;
+    entry.expiresAt = Date.now() + SESSION_FILES_LISTING_TTL_MS;
+  }
+  return result.files;
 }
 
 export async function listSessionFilesForAgent(agentId: string): Promise<string[]> {
@@ -383,19 +420,14 @@ export async function listSessionFilesForAgent(agentId: string): Promise<string[
   if (existing?.value && Date.now() < existing.expiresAt) {
     return existing.value;
   }
-  const inFlight = readSessionFilesForDir(dir);
-  const entry: SessionFilesListingEntry = { inFlight, expiresAt: 0 };
+  const entry: SessionFilesListingEntry = { expiresAt: 0 };
   sessionFilesListingByDir.set(dir, entry);
   pruneSessionFilesListing();
-  const value = await inFlight;
-  // Only publish the snapshot if this read is still the active entry; an
-  // invalidation or newer read during the await must win.
-  if (sessionFilesListingByDir.get(dir) === entry) {
-    entry.inFlight = undefined;
-    entry.value = value;
-    entry.expiresAt = Date.now() + SESSION_FILES_LISTING_TTL_MS;
-  }
-  return value;
+  // Share one in-flight read across concurrent callers; the snapshot is only
+  // published on success (see loadSessionFilesSnapshot).
+  const inFlight = loadSessionFilesSnapshot(dir, entry);
+  entry.inFlight = inFlight;
+  return await inFlight;
 }
 
 /** Clears cached session-file listing snapshots. Used by tests to isolate runs. */
